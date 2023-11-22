@@ -6,9 +6,9 @@ import torchvision.datasets as datasets
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import numpy as np
-import time
+import os
 
-""" def imshow(img):
+def imshow(img):
     # unnormalize
     mean = torch.Tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
     std = torch.Tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
@@ -16,7 +16,7 @@ import time
     npimg = img.numpy()
     plt.imshow(np.transpose(npimg, (1, 2, 0)))
     plt.show()
-    plt.savefig("dummy_name.png") """
+    plt.savefig("batch_0.png")
 
 layer_outputs = []
 def hook_fn(module, input, output):
@@ -28,12 +28,16 @@ def load_pretrained_model(model_name, numbering):
         model = models.vgg16(weights=None)  # Initialize a blank VGG16 model
     elif model_name == "resnet50":
         model = models.resnet50(weights=None)  # Initialize a blank ResNet50 model
+    elif model_name == 'resnet18':
+        model = models.resnet18(weights=None)  # Initialize a blank ResNet18 model
+    elif model_name =='googlenet':
+        model = models.googlenet(weights=None)  # Initialize a blank googlenet model
     else:
         print("Unsupported model name!")
         return None
 
     # Load weights into the model
-    weight_file = f"{model_name}_{numbering}_weights.pth"
+    weight_file = f"weights/{model_name}_{numbering}_weights.pth"
     model.load_state_dict(torch.load(weight_file))
     model.eval()  # Set the model to evaluation mode
 
@@ -46,6 +50,9 @@ def load_pretrained_model(model_name, numbering):
 
 # Load a model for testing, e.g., VGG16 with numbering 0
 model = load_pretrained_model("vgg16", 0)
+
+# Print the layer structure summary
+print(model)
 
 # Assuming you have the ImageNet testing dataset in a folder named 'test_image'
 data_transforms = transforms.Compose([
@@ -1070,9 +1077,12 @@ IMAGENET_CLASSES ={
 
 model.eval()
 
+output_dir = 'layer_outputs'
+os.makedirs(output_dir, exist_ok=True)
 with torch.no_grad():
     for i, data in enumerate(test_loader):
         images, labels = data
+        imshow(images[0])
         images, labels = images.to(device), labels.to(device)
 
         # Clear the outputs from the previous batch
@@ -1081,19 +1091,12 @@ with torch.no_grad():
         outputs = model(images)
 
         for idx, intermediate_output in enumerate(layer_outputs):
-            print(f"Output from Layer {idx + 1}:")
-            print(intermediate_output)
-            print("="*50)
+            output_np = intermediate_output.cpu().numpy()
+            np.savez_compressed(os.path.join(output_dir, f'layer_{idx + 1}_batch_{i}.npz'), output_np)
 
-"""         _, predicted = outputs.max(1)
-        for j in range(len(labels)):
-            # Get the predicted class's index and its probability
-            predicted_index = predicted[j].item()
-            predicted_prob = outputs[j][predicted_index].item()
-
-            # Get the label from the IMAGENET_CLASSES dictionary
-            predicted_label = IMAGENET_CLASSES.get(predicted_index, "Unknown class")
-            print(f"Predicted Class: {predicted_label}, Probability: {predicted_prob:.4f}")
-            # imshow(images[j].cpu()) """
+            # Or, save as a PyTorch file (.pt)
+            torch.save(intermediate_output, os.path.join(output_dir, f'layer_{idx + 1}_batch_{i}.pt'))
+            
+        break
 
 print('done')

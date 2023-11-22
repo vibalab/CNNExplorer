@@ -1,11 +1,12 @@
 import torch
 import torchvision
 from torchvision.models import (alexnet, vgg16, googlenet, resnet50, resnet101, densenet121,
-                                mobilenet_v2, efficientnet_b1, 
+                                mobilenet_v2, efficientnet_b1, resnet18, 
                                 # vit_base_patch16_224, 
                                 AlexNet_Weights, VGG16_BN_Weights, VGG16_Weights,
                                 GoogLeNet_Weights, ResNet101_Weights, ResNet50_Weights,
                                 DenseNet121_Weights, MobileNet_V2_Weights, EfficientNet_B1_Weights,
+                                ResNet18_Weights,
                                 ViT_B_16_Weights)
 
 # Create a dictionary of available models and their weights
@@ -18,6 +19,7 @@ model_dict = {
     'densenet': (densenet121, [DenseNet121_Weights.IMAGENET1K_V1]),
     'mobilenet': (mobilenet_v2, [MobileNet_V2_Weights.IMAGENET1K_V1, MobileNet_V2_Weights.IMAGENET1K_V2]),
     'efficientnet': (efficientnet_b1, [EfficientNet_B1_Weights.IMAGENET1K_V1, EfficientNet_B1_Weights.IMAGENET1K_V2]),
+    'resnet18': (resnet18, [ResNet18_Weights.IMAGENET1K_V1])
     # 'vit': (vit_base_patch16_224, [ViT_B_16_Weights.IMAGENET1K_V1])
 }
 
@@ -35,7 +37,7 @@ def get_model(model_name, weight_version):
 # Function to save model weights
 def save_model_weights(model, model_name):
     # Save the model weights in the current directory
-    torch.save(model.state_dict(), f"{model_name}_weights.pth")
+    torch.save(model.state_dict(), f"weights/{model_name}_weights.pth")
 
 # Get user input
 model_name = input("Enter the model name: ")
@@ -44,6 +46,7 @@ weight_version = int(input("Enter the weight version number (starting from 0): "
 # Get the model
 model = get_model(model_name, weight_version)
 
+# Print model list in torchvision.model
 for name in dir(torchvision.models):
     print(name)
 

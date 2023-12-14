@@ -1,0 +1,6 @@
+conda install
+pytorch==2.0.1
+
+
+npx install node-modules
+npx install d3

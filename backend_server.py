@@ -1,4 +1,6 @@
 from flask import Flask, jsonify, send_from_directory
+import torch
+import torchvision.models as models
 import json
 import random
 import torch

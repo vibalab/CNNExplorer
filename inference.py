@@ -2,8 +2,11 @@ import torch
 import torch.nn as nn
 import torchvision
 import torchvision.models as models
+import torchvision.transforms as transforms
 import json
 import os
+
+from PIL import Image
 
 from convert_weight_to_json import *
 from convert_tensor_to_json import *
@@ -70,6 +73,14 @@ def get_layer_state(state_dict, layer_name):
             result[k] = state_dict[k]
     return result
 
+
+data_transforms = transforms.Compose([
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+
 def inference(log_dir, data_dir, model_name): 
     os.makedirs(log_dir, exist_ok=True)
 
@@ -78,9 +89,10 @@ def inference(log_dir, data_dir, model_name):
     model.to(device)
     model.eval()
 
-    data = torchvision.io.read_image(data_dir).float()
+    img = Image.open(data_dir)
+    data = data_transforms(img)
     data = data.unsqueeze(0)
-
+    print(data.max(), data.min())
     info = {}
 
     with torch.no_grad():
@@ -97,9 +109,9 @@ def inference(log_dir, data_dir, model_name):
             layer_weight = None
             if n+".weight" in layer_state:
                 layer_weight = layer_state[n+".weight"].cpu().numpy()
-                print(n, " : ", i.shape, o.shape, layer_weight.shape)
+                print(n, " : ", i.shape, o.shape, layer_weight.shape, i.max(), i.min())
             else:
-                print(n, " : ", i.shape, o.shape)
+                print(n, " : ", i.shape, o.shape, i.max(), i.min())
 
             # reduce dimension
             input_idx = None
@@ -147,6 +159,6 @@ def inference(log_dir, data_dir, model_name):
             json.dump(info, f)
 
 if __name__ == "__main__":
-    for model in ['resnet18']:#, 'alexnet', 'googlenet', 'vgg16']:
+    for model in ['googlenet']:#,'resnet18', 'alexnet', 'googlenet', 'vgg16']:
         inference(f'./svelte-app/public/output/', './test_image/cat/image_1.jpg', model)
 

@@ -18,6 +18,30 @@ layer_classes = []
 
 check_list_class = [nn.Conv2d, nn.BatchNorm2d, nn.ReLU, nn.MaxPool2d, nn.AdaptiveAvgPool2d, nn.Linear]
 
+module_start_name_dict = {
+        "vgg16": ["features.0", "features.5", "features.10", "features.17", "features.24", 
+                  "avgpool", "classifier.0"],
+        "alexnet": ["features.0", "features.3", "features.6", "avgpool", "classifier.0"],
+        "resnet18": ["conv1", "layer1.0.conv1", "layer1.1.conv1", "layer2.0.conv1", "layer2.1.conv1", 
+                   "layer3.0.conv1", "layer3.1.conv1", "layer4.0.conv1", "layer4.1.conv1", "avgpool", "fc"],
+        "googlenet": ["conv1.conv", "conv2.conv", "inception3a.branch1.conv", "inception3b.branch1.conv", 
+                      "inception4a.branch1.conv", "inception4b.branch1.conv", "inception4c.branch1.conv", 
+                      "inception4d.branch1.conv", "inception4e.branch1.conv", "inception5a.branch1.conv",
+                      "inception5b.branch1.conv", "avgpool", "fc"]
+        }
+
+def insert_module_info(info, model_name):
+    module_index = -1
+    layer_index = 0
+    for k in info.keys():
+        if k in module_start_name_dict[model_name]:
+            module_index += 1
+            layer_index = 0 
+        else:
+            layer_index += 1
+        info[k]['module_index'] = module_index
+        info[k]['layer_index'] = layer_index
+
 def hook_fn(m, i, o):
     layer_names.append(m._layer_name)
     layer_classes.append(m.__class__)
@@ -109,9 +133,9 @@ def inference(log_dir, data_dir, model_name):
             layer_weight = None
             if n+".weight" in layer_state:
                 layer_weight = layer_state[n+".weight"].cpu().numpy()
-                print(n, " : ", i.shape, o.shape, layer_weight.shape, i.max(), i.min())
+                print(n, " : ", c, i.shape, o.shape, layer_weight.shape, i.max(), i.min())
             else:
-                print(n, " : ", i.shape, o.shape, i.max(), i.min())
+                print(n, " : ", c, i.shape, o.shape, i.max(), i.min())
 
             # reduce dimension
             input_idx = None
@@ -154,11 +178,15 @@ def inference(log_dir, data_dir, model_name):
             info[n]["output"] = o.tolist()
             info[n]["weight"] = layer_weight.tolist() if layer_weight is not None else None
 
+        insert_module_info(info, model_name)
         #torch.save(state_dict, os.path.join(log_dir, 'weights.pth'))
         with open(os.path.join(log_dir, model_name+'_info.json'), "w") as f:
             json.dump(info, f)
 
 if __name__ == "__main__":
-    for model in ['googlenet']:#,'resnet18', 'alexnet', 'googlenet', 'vgg16']:
+    for model in ['resnet18', 'alexnet', 'googlenet', 'vgg16']:
         inference(f'./svelte-app/public/output/', './test_image/cat/image_1.jpg', model)
-
+        layer_inputs = []
+        layer_outputs = []
+        layer_names = []
+        layer_classes = []

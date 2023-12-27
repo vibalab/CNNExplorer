@@ -18,16 +18,23 @@ layer_classes = []
 
 check_list_class = [nn.Conv2d, nn.BatchNorm2d, nn.ReLU, nn.MaxPool2d, nn.AdaptiveAvgPool2d, nn.Linear]
 
+# conv residual avgpool linear inception
 module_start_name_dict = {
-        "vgg16": ["features.0", "features.5", "features.10", "features.17", "features.24", 
-                  "avgpool", "classifier.0"],
-        "alexnet": ["features.0", "features.3", "features.6", "avgpool", "classifier.0"],
-        "resnet18": ["conv1", "layer1.0.conv1", "layer1.1.conv1", "layer2.0.conv1", "layer2.1.conv1", 
+        "vgg16": [["features.0", "features.5", "features.10", "features.17", "features.24", 
+                  "avgpool", "classifier.0"], 
+                  ["conv","conv","conv","conv","conv","avgpool","linear"]],
+        "alexnet": [["features.0", "features.3", "features.6", "avgpool", "classifier.0"],
+                    ["conv","conv","conv","avgpool","linear"]],
+        "resnet18": [["conv1", "layer1.0.conv1", "layer1.1.conv1", "layer2.0.conv1", "layer2.1.conv1", 
                    "layer3.0.conv1", "layer3.1.conv1", "layer4.0.conv1", "layer4.1.conv1", "avgpool", "fc"],
-        "googlenet": ["conv1.conv", "conv2.conv", "inception3a.branch1.conv", "inception3b.branch1.conv", 
+                   ["conv","residual","residual","residual","residual",
+                       "residual","residual","residual","residual","avgpool","linear"]],
+        "googlenet": [["conv1.conv", "conv2.conv", "inception3a.branch1.conv", "inception3b.branch1.conv", 
                       "inception4a.branch1.conv", "inception4b.branch1.conv", "inception4c.branch1.conv", 
                       "inception4d.branch1.conv", "inception4e.branch1.conv", "inception5a.branch1.conv",
-                      "inception5b.branch1.conv", "avgpool", "fc"]
+                      "inception5b.branch1.conv", "avgpool", "fc"], 
+                      ["conv","conv","inception","inception","inception","inception","inception","inception",
+                      "inception","inception","inception","avgpool","linear"]]
         }
 
 def insert_module_info(info, model_name):
@@ -182,6 +189,9 @@ def inference(log_dir, data_dir, model_name):
         #torch.save(state_dict, os.path.join(log_dir, 'weights.pth'))
         with open(os.path.join(log_dir, model_name+'_info.json'), "w") as f:
             json.dump(info, f)
+        with open(os.path.join(log_dir, model_name+'_module_info.json'), "w") as f:
+            json.dump(module_start_name_dict, f)
+
 
 if __name__ == "__main__":
     for model in ['resnet18', 'alexnet', 'googlenet', 'vgg16']:

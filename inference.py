@@ -189,8 +189,8 @@ def inference(log_dir, data_dir, model_name):
         #torch.save(state_dict, os.path.join(log_dir, 'weights.pth'))
         with open(os.path.join(log_dir, model_name+'_info.json'), "w") as f:
             json.dump(info, f)
-        with open(os.path.join(log_dir, model_name+'_module_info.json'), "w") as f:
-            json.dump(module_start_name_dict, f)
+    with open(os.path.join(log_dir, 'module_info.json'), "w") as f:
+        json.dump(module_start_name_dict, f)
 
 
 if __name__ == "__main__":

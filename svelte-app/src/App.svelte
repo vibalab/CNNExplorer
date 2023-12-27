@@ -1,182 +1,262 @@
 <script>
 	import { onMount } from 'svelte';
   import * as d3 from 'd3';
+  import { construct_svelte_component } from 'svelte/internal';
 
 	// import Overview from './Overveiw.svelte'
 	// import Conv from '.operators/Convolutional.svelte'
 
-  let lines;  
-  // IDs of images covered by the rectangle
-  let coveredImageIds = [];
-  let clickedOverlayRect = null;
-
+  //######################################################################//
+  let selectedModel = 'resnet18';
+  let moduleLists = undefined;
+  let focusedModule = undefined;
+  let modelData = undefined;
+  let detail_svg = undefined;
   onMount(() => {
-      const svg = d3.select('#model-container')
+    detail_svg = d3.select('#IR-detail-load')
                     .append('svg')
-                    .attr('width', 1000)
-                    .attr('height', 1000);
-  
-      const images = [
-        { id: 'img1', url: 'images/image_1.jpg', x: 100, y: 100, width: 100, height: 100 },  // Assuming image_1.jpg is in the public folder
-        { id: 'img2', url: 'images/image_2.jpg', x: 400, y: 100, width: 100, height: 100 },  // Assuming image_2.jpg is in the public folder
-        { id: 'img3', url: 'images/image_3.jpg', x: 400, y: 300, width: 100, height: 100 },  // Assuming image_3.jpg is in the public folder
-        { id: 'img4', url: 'images/image_4.jpg', x: 400, y: 500, width: 100, height: 100 },  // Assuming image_4.jpg is in the public folder
-        { id: 'img5', url: 'images/image_5.jpg', x: 700, y: 100, width: 100, height: 100 }  // Assuming image_5.jpg is in the public folder
-      ];
-      
-      //TODO(yskim): Need to make a connections using for loop. Image naming rule is needed. 
-      const connections = [
-        { source: 'img1', target: 'img2' },
-        { source: 'img1', target: 'img3' },
-        { source: 'img1', target: 'img4' },
-        { source: 'img2', target: 'img5' },
-        { source: 'img3', target: 'img5' },
-        { source: 'img4', target: 'img5' }
-      ];
+                    .attr('width', 2000)
+                    .attr('height', 1000);  
+  });
 
-      const imageGroup = svg.selectAll('.image-group')
-                            .data(images)
-                            .enter()
-                            .append('g')
-                            .attr('class', 'image-group');
-  
-      imageGroup.append('image')
-                .attr('xlink:href', d => d.url)
-                .attr('x', d => d.x)
-                .attr('y', d => d.y)
-                .attr('width', d => d.width)
-                .attr('height', d => d.height);
+  const moduleXMargin = 10;
+  const moduleYMargin = 200;
+  const moduelWidth = 100;
+  const moduleHeight = 400;
+  let moduleStruct = undefined;
+  let moduleNum = undefined;
 
-      const border = imageGroup.append('rect')
-                    .attr('x', d => d.x)
-                    .attr('y', d => d.y)
-                    .attr('width', d => d.width)
-                    .attr('height', d => d.height)
-                    .attr('id', d => d.id)
-                    .style('fill', 'none')
-                    .style('stroke', 'gray')
-                    .style('stroke-width', 1);
+  async function loadModelView() {
 
-      // Draw lines
-      lines = connections.map(conn => {
-        const sourceImage = images.find(img => img.id === conn.source);
-        const targetImage = images.find(img => img.id === conn.target);
+    console.log(selectedModel)
+    moduleStruct = [];
 
-        const link = d3.linkHorizontal()
-                        .source(() => [sourceImage.x + sourceImage.width, sourceImage.y + sourceImage.height / 2])
-                        .target(() => [targetImage.x, targetImage.y + targetImage.height / 2]);
+    const response = await fetch(`/output/${selectedModel}_info.json`);
+    modelData = await response.json();
+    console.log("Loaded JSON data:", modelData);
 
-        return svg.append('path')
-                .attr('d', link())
-                .attr('fill', 'none')
-                .attr('stroke', 'gray')
-                .attr('stroke-width', 1)
-                .attr('id', `line-${conn.source}-${conn.target}`);
-    });
+    // JSON 객체의 모든 키를 출력합니다.
+    console.log("Keys in JSON:", Object.keys(modelData));
 
-    // Event handlers for images
-    imageGroup.on('mouseover', function(d) {
-      d3.select(this).select('rect').style('stroke-width', 3); // Bold border
-      const rectId = d3.select(this).select('rect').attr('id')
-
-      // Bold connected lines
-      lines.forEach(line => {
-        if (line.attr('id').includes(rectId)) {
-          line.style('stroke-width', 3);
-        }
-      });
-    }).on('mouseout', function(d) {
-      d3.select(this).select('rect').style('stroke-width', 1); // Revert border width
-      const rectId = d3.select(this).select('rect').attr('id')
-
-      // Revert line width
-      lines.forEach(line => {
-        if (line.attr('id').includes(rectId)) {
-          line.style('stroke-width', 1);
-        }
-      });
-    });
-
-    // Create a rect covering specific images
-    const overlayRect = svg.append('rect')
-                           .attr('x', 350) // Starting x-coordinate
-                           .attr('y', 50)  // Starting y-coordinate
-                           .attr('width', 500) // Width
-                           .attr('height', 200) // Height
-                           .attr('id', 'overlay1')
-                           .style('fill', 'none')
-                           .style('stroke', 'black')
-                           .style('stroke-width', 2)
-                           .style('stroke-dasharray', "10,5") // Dash pattern: 10px dash, 5px gap
-                           .style('pointer-events', 'all')
-                           .style('cursor', 'pointer');
-
-    // Function to check if an image is inside the rectangle
-    function isImageInsideRect(image, overlay) {
-      const right = overlay.x.baseVal.value + overlay.width.baseVal.value;
-      const bottom = overlay.y.baseVal.value + overlay.height.baseVal.value;
-      return (
-        image.x >= overlay.x.baseVal.value &&
-        image.y >= overlay.y.baseVal.value &&
-        image.x + image.width <= right &&
-        image.y + image.height <= bottom
-      );
+    const uniqueModules = new Set(); // 중복을 허용하지 않는 Set 생성
+    // structure column
+    for (const key in modelData) {
+      const layer = data[key];
+      if (module.module_index !== moduleIndex) {
+        // moduleStruct.push(module.module_type);
+        moduleIndex = module.module_index;
+      }
     }
+    
+    moduleStruct.push('conv');
+    moduleStruct.push('residual');
+    moduleStruct.push('residual');
+    moduleStruct.push('residual');
+    moduleStruct.push('residual');
+    moduleStruct.push('residual');
+    moduleStruct.push('residual');
+    moduleStruct.push('residual');
+    moduleStruct.push('residual');
+    moduleStruct.push('residual');
+    moduleStruct.push('avgpool');
+    moduleStruct.push('linear');
 
 
-    // Mouseover and mouseout event handlers for the overlay rect
-    //overlayRect.forEach(rect => {
-    //  rect.on(...)
-    //})
-    overlayRect.on('mouseover', function() {
-      images.forEach(image => {
-        if (isImageInsideRect(image, this)) {
-          svg.select(`#${image.id}`).style('stroke-width', 3); // Bold border for covered images
-          coveredImageIds.push(image.id);
-        }  
-      });
-      // Bold connected lines
-      connections.forEach(conn => {
-        if (coveredImageIds.includes(conn.source) && coveredImageIds.includes(conn.target)) {
-          svg.select(`#line-${conn.source}-${conn.target}`).style('stroke-width', 3);
-        }
-      });
-    }).on('mouseout', function() {
-      images.forEach(image => {
-        if (coveredImageIds.includes(image.id)) {
-          svg.select(`#${image.id}`).style('stroke-width', 1); // Revert border width for covered images
-        }
-      });
-      // Revert line width
-      connections.forEach(conn => {
-        if (coveredImageIds.includes(conn.source) && coveredImageIds.includes(conn.target)) {
-          svg.select(`#line-${conn.source}-${conn.target}`).style('stroke-width', 1);
-        }
-      });
-      coveredImageIds = [];
-    }).on('click', function(){      
-      // 이미 클릭된 상태라면 해제
-      if (this.id === clickedOverlayRect) {
-          d3.select(this).style('fill ', 'none');
-          clickedOverlayRect = null;
-          return;
+    moduleStruct.forEach((moduleName, moduleIndex) => {
+      let moduleFills = undefined;
+      if (moduleName === 'conv'){
+        moduleFills = 'green'
+      }
+      else if (moduleName === 'residual'){
+        moduleFills = 'red'
+      }
+      else if (moduleName === 'avgpool'){
+        moduleFills = 'yellow'
+      }
+      else if (moduleName === 'linear'){
+        moduleFills = 'orange'
+      }
+      else if (moduleName === 'inception'){
+        moduleFills = 'gray'
       }
 
-      // 이전에 클릭된 rect가 있다면, 그 스타일을 해제
-      if (clickedOverlayRect) {
-        d3.select(`#${clickedOverlayRect}`).style('fill ', 'none');
-      }
 
-      // 현재 rect의 스타일 설정 및 추적
-      d3.select(this).style('fill ', 'gray');
-      clickedOverlayRect = this.id
+      let moduleGroup = detail_svg.append('g')
+          .on('mouseover', function() {
+            d3.select(this).select('rect')
+              .transition()
+              .duration(250)
+              .style('stroke-width', 3);
+
+            // 텍스트에도 스타일 변경 적용
+            d3.select(this).select('text')
+              .transition()
+              .duration(250)
+              .style('font-weight', 600); // 예시: 텍스트 색상을 빨간색으로 변경
+          })
+          .on('mouseout', function() {
+            d3.select(this).select('rect')
+              .transition()
+              .duration(250)
+              .style('stroke-width', 0);
+
+            // 텍스트 스타일을 원래대로 복원
+            d3.select(this).select('text')
+              .transition()
+              .duration(250)
+              .style('font-weight', 300); // 예시: 텍스트 색상을 다시 검은색으로 변경
+          }).on('click', function(){      
+              // 이미 클릭된 상태라면 해제
+              if (this.id === clickedOverlayRect) {
+                  d3.select(this).style('fill', 'none');
+                  clickedOverlayRect = null;
+                  return;
+              }
+
+              // 이전에 클릭된 rect가 있다면, 그 스타일을 해제
+              if (clickedOverlayRect) {
+                d3.select(`#${clickedOverlayRect}`).style('fill', 'none');
+              }
+
+              // 현재 rect의 스타일 설정 및 추적
+              d3.select(this).style('fill', 'gray');
+              clickedOverlayRect = this.id;
+          });
+           
+      moduleGroup.append('rect')
+          .attr('x', moduleIndex * (moduelWidth + moduleXMargin))
+          .attr('y', moduleYMargin)
+          .attr('width', moduelWidth)
+          .attr('height', moduleHeight)
+          .attr('fill', moduleFills)
+          .style('stroke-width', 0)
+          .style('stroke', 'gray');
+
+      moduleGroup.append('text')
+          .attr('x', moduleIndex * (moduelWidth + moduleXMargin) + moduelWidth / 2)
+          .attr('y', moduleYMargin + moduleHeight / 2)
+          .attr('text-anchor', 'middle') 
+          .attr('dominant-baseline', 'middle') 
+          .text(moduleName);
     });
-  }); //End of on mount function
+  }
+
+  async function loadJSON() {
+    console.log(selectedModel)
+
+    const response = await fetch(`/output/${selectedModel}_info.json`);
+    modelData = await response.json();
+    console.log("Loaded JSON data:", modelData);
+
+    // JSON 객체의 모든 키를 출력합니다.
+    console.log("Keys in JSON:", Object.keys(modelData));
+
+    for (const key in modelData){
+        console.log(key);
+        uniqueModules.add(modelData[key]['module']); // module 값 추가
+
+        drawLayer(modelData[key]['output'])
+        break
+    }
+    // moduleLists = Array.from(modules);
+  }
+
+  function drawImage(image, max, min, offsetX, offsetY) {
+    const cellSize = 1;
+    const g = detail_svg .append('g')
+      .attr('transform', `translate(${offsetX}, ${offsetY})`);
+    
+    console.log(image)
+    image.forEach((row, i) => {
+      row.forEach((value, j) => {
+        g.append('rect')
+          .attr('x', j * cellSize)
+          .attr('y', i * cellSize)
+          .attr('width', cellSize)
+          .attr('height', cellSize)
+          .attr('fill', getFillColor(value));
+      });
+    });
+  }
+  // TODO(YSKIM): LayerImage대신 Layerindex를 쓰는걸로
+  function drawLayer(layerImages, offsetX, offestY) {
+    const [max, min] = getLayerMaxMin(layerImages);
+    const imageHeight = 113;
+    const padding = 10;
+
+    layerImages.forEach((image, index) => {
+      const offsetX = 10;
+      const offsetY = index * (imageHeight + padding);
+      drawImage(image, max, min, offsetX, offsetY);
+    });
+  }
+
+  // 배열의 각 요소를 그레이스케일 색상으로 변환하는 함수
+  function getFillColor(value) {
+    const color = Math.floor(value/255);
+    return `rgb(${color},${color},${color})`;
+  }
+
+  // TODO(YSKIM): Module Max Min으로 바꿔야함
+  function getLayerMaxMin(layerImages) {
+    const flatImages = layerImages.flat(3);
+
+    const sortedImages = flatImages.sort((a, b) => a - b);
+
+    const max = Math.max(...flatImages);
+    const min = Math.min(...flatImages);
+    // console.log(max)
+    // console.log(min)
+    
+    return [max, min];
+  }
+
+  function getImageMaxMin(image) {
+    const flatImage = image.flat(2);
+
+    const max = Math.max(...flatImage);
+    const min = Math.min(...flatImage);
+
+    return [max, min];
+  }
+
+  function normalizeAndScale(image, max, min) {
+    return image.map(row =>
+      row.map(value => (value - min) / (max - min) * 255)
+    );
+  }
+  /*
+  function drawModule() {
+    for (moduleType in moduleLists) {
+      if (moduleType === 'conv') {
+        //색상 파랑
+      } 
+      else if (moduleType === 'dense') {
+        //색상 노랑
+      }
+      else if (moduleType === 'inception') {
+        //색상 회색
+      }
+      else if (moduleType === 'residual') {
+        //색상 녹색
+      }
+    }
+  }
+  */
 
 </script>
 
-<div id="model-container"></div>  
-<!-- <button on:click={visWeight}>Visualize layer output</button> -->
+<select bind:value={selectedModel}>
+  <option value='resnet18'>ResNet</option>
+  <option value='vgg16'>VGG</option>
+  <option value='alexnet'>AlexNet</option>
+  <option value='googlenet'>GoogleNet</option>
+</select>
+<button on:click={loadModelView}>Load</button>
+
+<div id='model-container'></div>  
+<div id='model-load'></div>
+<div id='IR-detail-load'></div>
 
 <!-- <div id='overview'>
 	<Overview />

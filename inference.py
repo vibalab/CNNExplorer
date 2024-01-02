@@ -41,13 +41,14 @@ def insert_module_info(info, model_name):
     module_index = -1
     layer_index = 0
     for k in info.keys():
-        if k in module_start_name_dict[model_name]:
+        if k in module_start_name_dict[model_name][0]:
             module_index += 1
             layer_index = 0 
         else:
             layer_index += 1
         info[k]['module_index'] = module_index
         info[k]['layer_index'] = layer_index
+        info[k]['module_name'] = module_start_name_dict[model_name][1][module_index]
 
 def hook_fn(m, i, o):
     layer_names.append(m._layer_name)

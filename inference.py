@@ -145,7 +145,7 @@ def inference(log_dir, data_dir, model_name):
             else:
                 print(n, " : ", c, i.shape, o.shape, i.max(), i.min())
 
-            # reduce dimension
+            # reduce dimension, sample, HIL, outlier, abnormal
             input_idx = None
             output_idx = None
             if i.shape[0] > 8:
@@ -193,11 +193,23 @@ def inference(log_dir, data_dir, model_name):
     with open(os.path.join(log_dir, 'module_info.json'), "w") as f:
         json.dump(module_start_name_dict, f)
 
+def get_imagenet_data():
+    images = []
+    path = "./imagenet-sample-images"
+    for fname in sorted(os.listdir(path)):
+        if fname.endswith(".JPEG"):
+            images.append(os.path.join(path, fname))
+    return images
 
 if __name__ == "__main__":
+    test_image = "./test_image/cat/image_1.jpg"
+
+    imagenet_data = get_imagenet_data()[:5]
     for model in ['resnet18', 'alexnet', 'googlenet', 'vgg16']:
-        inference(f'./svelte-app/public/output/', './test_image/cat/image_1.jpg', model)
-        layer_inputs = []
-        layer_outputs = []
-        layer_names = []
-        layer_classes = []
+        for index, data in enumerate(imagenet_data):
+            #label = IMAGENET_CLASSES[index]
+            inference(f"./svelte-app/public/output/{index}/", data, model)
+            layer_inputs = []
+            layer_outputs = []
+            layer_names = []
+            layer_classes = []

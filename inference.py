@@ -23,7 +23,7 @@ module_start_name_dict = {
         "vgg16": [["features.0", "features.5", "features.10", "features.17", "features.24", 
                   "avgpool", "classifier.0"], 
                   ["conv","conv","conv","conv","conv","avgpool","linear"]],
-        "alexnet": [["features.0", "features.3", "features.6", "avgpool", "classifier.0"],
+        "alexnet": [["features.0", "features.3", "features.6", "avgpool", "classifier.1"],
                     ["conv","conv","conv","avgpool","linear"]],
         "resnet18": [["conv1", "layer1.0.conv1", "layer1.1.conv1", "layer2.0.conv1", "layer2.1.conv1", 
                    "layer3.0.conv1", "layer3.1.conv1", "layer4.0.conv1", "layer4.1.conv1", "avgpool", "fc"],
@@ -106,12 +106,6 @@ def get_layer_state(state_dict, layer_name):
     return result
 
 
-data_transforms = transforms.Compose([
-    transforms.Resize(256),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
 
 def inference(log_dir, data_dir, model_name): 
     os.makedirs(log_dir, exist_ok=True)
@@ -120,6 +114,14 @@ def inference(log_dir, data_dir, model_name):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     model.eval()
+
+
+    data_transforms = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(227 if model_name == "alexnet" else 224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
 
     img = Image.open(data_dir)
     data = data_transforms(img)

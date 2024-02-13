@@ -1,7 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
   import * as d3 from 'd3';
-  import { construct_svelte_component } from 'svelte/internal';
 
 	// import Overview from './Overveiw.svelte'
 	// import Conv from '.operators/Convolutional.svelte'
@@ -1255,7 +1254,29 @@
   }
   function drawInceptionModuleDetail(moduleLayers){
   }
-  function drawResidualModuleDetail(moduleLayers){   
+  function drawResidualModuleDetail(moduleLayers){  
+    let reluCount = 0;
+    moduleLayers.forEach((layer, layerIndex) => {
+      if(layerIndex === 0){
+        console.log(layer);
+
+        const x = moduleXPadding + (layerIndex - reluCount) * (imageWidth + offsetX);
+        const y = moduleYPadding + (offsetY);
+
+        drawLayer(layer['input'], x, y, 1);
+      }
+      if(layer['class'] === 'ReLU' && layerIndex > 0){
+        // const x = moduleXPadding + (layerIndex - reluCount) * (imageWidth + offsetX) + offsetReLU;
+        // const y = moduleYPadding + (offsetY - offsetReLU)
+        // reluCount++;
+        // drawLayer(layer['output'], x, y, 0);
+      }
+      else{
+        const x = moduleXPadding + (layerIndex - reluCount + 1) * (imageWidth + offsetX);
+        const y = moduleYPadding + (offsetY);
+        drawLayer(layer['output'], x, y, 1);
+      }
+    });
   }
   function drawFlatten3D(layerImages, x, y, z){
     const flatImages = layerImages.flat(3);
@@ -1324,25 +1345,48 @@
   }
   function drawImage(image, colorScale, x, y, z) {
     const cellSize = 133 / image.length;
-    // console.log(image)
+    const numRows = image.length;
+    const numCols = image[0].length; // 가정: 모든 행이 동일한 길이를 가짐
+
     const imageCells = d3.select('#detail-svg')
     .append('g')
     // .attr('id', '')
     .attr('transform', `translate(${x}, ${y})`);
     
-    image.forEach((row, i) => {
-      row.forEach((value, j) => {
-        imageCells.append('rect')
-          .attr('x', j * cellSize)
-          .attr('y', i * cellSize)
+    image.forEach((row, rowIndex) => {
+      row.forEach((value, colIndex) => {
+        const cell = imageCells.append('rect')
+          .attr('x', colIndex * cellSize)
+          .attr('y', rowIndex * cellSize)
           .attr('z', z)
           .attr('width', cellSize)
           .attr('height', cellSize)
-          .style('fill', colorScale(value))
-          .style('stroke', 'black')
-          .style('stroke-opacity', 0.5);
+          .style('fill', colorScale(value));
+          
+        // 가장자리 셀에 대한 외곽선 조건적 추가
+        if (rowIndex === 0) { // 상단 가장자리
+          drawLine(colIndex, rowIndex, colIndex + 1, rowIndex);
+        }
+        if (rowIndex === numRows - 1) { // 하단 가장자리
+          drawLine(colIndex, rowIndex + 1, colIndex + 1, rowIndex + 1);
+        }
+        if (colIndex === 0) { // 좌측 가장자리
+          drawLine(colIndex, rowIndex, colIndex, rowIndex + 1);
+        }
+        if (colIndex === numCols - 1) { // 우측 가장자리
+          drawLine(colIndex + 1, rowIndex, colIndex + 1, rowIndex + 1);
+        }
       });
     });
+    function drawLine(x1, y1, x2, y2) {
+      imageCells.append('line')
+        .attr('x1', x1 * cellSize)
+        .attr('y1', y1 * cellSize)
+        .attr('x2', x2 * cellSize)
+        .attr('y2', y2 * cellSize)
+        .style('stroke', 'black')
+        .style('stroke-opacity', 0.5);
+    }
   }
 
   function getLayerMaxMin3D(layerImages) {

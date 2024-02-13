@@ -6,6 +6,7 @@ import torchvision.transforms as transforms
 import json
 import os
 
+import numpy as np
 from PIL import Image
 
 from convert_weight_to_json import *
@@ -66,11 +67,9 @@ def check_layer(name, module):
              return True
     return False
 
-# when accessing same module twice?
 def hook_all_layers(net, name=""):
     split = "" if name == "" else "."
     for lname, layer in net._modules.items():
-        #print(lname, check_layer(lname, layer))
         if not check_layer(lname, layer):
             hook_all_layers(layer, name=f"{name}{split}{lname}")
         else:
@@ -135,6 +134,8 @@ def inference(log_dir, data_dir, model_name):
         layer_outputs.clear()
         outputs = model(data)
         state_dict = model.state_dict()
+        prev_input_idx = None
+        prev_output_idx = None
         for i, o, n, c in zip(layer_inputs, layer_outputs, layer_names, layer_classes):
             i = i[0].squeeze(0).cpu().numpy()
             o = o[0].cpu().numpy()
@@ -150,13 +151,33 @@ def inference(log_dir, data_dir, model_name):
             # reduce dimension, sample, HIL, outlier, abnormal
             input_idx = None
             output_idx = None
-            if i.shape[0] > 8:
-                input_idx = range(8)
+            softmax_output = None
+            if c == nn.Linear:
+                if i.shape[0] > 1024:
+                    input_idx = range(1024)
+                    i = i[input_idx]
+                if n == layer_names[-1]:
+                    output_idx = (-o).argsort()[:10]
+                    y = np.exp(o - np.max(o))
+                    softmax_output = y / np.sum(np.exp(o)) * np.exp(np.max(o))
+                    o = o[output_idx]
+                    softmax_output = softmax_output[output_idx]
+                elif o.shape[0] > 1024:
+                    output_idx = range(1024)
+                    o = o[output_idx]
+            elif c == nn.ReLU:
+                input_idx = prev_output_idx
+                output_idx = prev_output_idx
                 i = i[input_idx]
-            if o.shape[0] > 8: 
-                output_idx = range(8)
                 o = o[output_idx]
-            
+            else:
+                if i.shape[0] > 8:
+                    input_idx = range(8)
+                    i = i[input_idx]
+                if o.shape[0] > 8:
+                    output_idx = range(8)
+                    o = o[output_idx]
+
             # reduce dimension (weight)
             if layer_weight is None:
                 pass
@@ -187,6 +208,13 @@ def inference(log_dir, data_dir, model_name):
             info[n]["input"] = i.tolist()
             info[n]["output"] = o.tolist()
             info[n]["weight"] = layer_weight.tolist() if layer_weight is not None else None
+            
+            if n == layer_names[-1]:
+                info[n]['output_index'] = output_idx.tolist()
+                info[n]['softmax_output'] = softmax_output.tolist()
+
+            prev_input_idx = input_idx
+            prev_output_idx = output_idx
 
         insert_module_info(info, model_name)
         #torch.save(state_dict, os.path.join(log_dir, 'weights.pth'))
@@ -207,7 +235,7 @@ if __name__ == "__main__":
     test_image = "./test_image/cat/image_1.jpg"
 
     imagenet_data = get_imagenet_data()[:5]
-    for model in ['resnet18', 'alexnet', 'googlenet', 'vgg16']:
+    for model in ['alexnet', 'resnet18', 'googlenet', 'vgg16']:
         for index, data in enumerate(imagenet_data):
             #label = IMAGENET_CLASSES[index]
             inference(f"./svelte-app/public/output/{index}/", data, model)

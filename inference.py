@@ -52,10 +52,13 @@ def insert_module_info(info, model_name):
         info[k]['module_name'] = module_start_name_dict[model_name][1][module_index]
 
 def hook_fn(m, i, o):
-    layer_names.append(m._layer_name)
+    if m._layer_name in layer_names:
+        layer_names.append(m._layer_name + "2")
+    else:
+        layer_names.append(m._layer_name)
     layer_classes.append(m.__class__)
-    layer_inputs.append(i)
-    layer_outputs.append(o)
+    layer_inputs.append(i[0].squeeze(0))
+    layer_outputs.append(o[0])
 
 def check_layer(name, module):
     if not hasattr(module, "_modules"):
@@ -67,13 +70,15 @@ def check_layer(name, module):
              return True
     return False
 
+hook_handles = []
 def hook_all_layers(net, name=""):
     split = "" if name == "" else "."
     for lname, layer in net._modules.items():
         if not check_layer(lname, layer):
             hook_all_layers(layer, name=f"{name}{split}{lname}")
         else:
-            layer.register_forward_hook(hook_fn)
+            handle = layer.register_forward_hook(hook_fn)
+            hook_handles.append(handle)
             setattr(layer, "_layer_name" ,f"{name}{split}{lname}")
 
 def load_pretrained_model(model_name, numbering):
@@ -104,16 +109,23 @@ def get_layer_state(state_dict, layer_name):
             result[k] = state_dict[k]
     return result
 
-
+def ReLU_inplace_to_False(module):
+    # https://stackoverflow.com/questions/74124725/setting-relu-inplace-to-false
+    for layer in module._modules.values():
+        if isinstance(layer, nn.ReLU):
+            layer.inplace = False
+        ReLU_inplace_to_False(layer)
 
 def inference(log_dir, data_dir, model_name): 
     os.makedirs(log_dir, exist_ok=True)
 
     model = load_pretrained_model(model_name, 0)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # need inplace=False for proper hook results
+    ReLU_inplace_to_False(model)
     model.to(device)
     model.eval()
-
 
     data_transforms = transforms.Compose([
         transforms.Resize(256),
@@ -133,22 +145,41 @@ def inference(log_dir, data_dir, model_name):
         layer_inputs.clear()
         layer_outputs.clear()
         outputs = model(data)
+
+        for h in hook_handles:
+            h.remove()
+
         state_dict = model.state_dict()
         prev_input_idx = None
         prev_output_idx = None
-        for i, o, n, c in zip(layer_inputs, layer_outputs, layer_names, layer_classes):
-            i = i[0].squeeze(0).cpu().numpy()
-            o = o[0].cpu().numpy()
+        prev_bn_output = None
+        residual_module_input = None
+
+        for n in layer_names:
+            info[n] = {}
+        insert_module_info(info, model_name)
+
+        for cnt, (i, o, n, c) in enumerate(zip(layer_inputs, layer_outputs, layer_names, layer_classes)):
+            i = i.cpu().numpy()
+            o = o.cpu().numpy()
 
             layer_state = get_layer_state(state_dict, n)
             layer_weight = None
             if n+".weight" in layer_state:
                 layer_weight = layer_state[n+".weight"].cpu().numpy()
-                print(n, " : ", c, i.shape, o.shape, layer_weight.shape, i.max(), i.min())
+                print(n, " : ", c, i.shape, o.shape, layer_weight.shape, o.max(), o.min())
             else:
-                print(n, " : ", c, i.shape, o.shape, i.max(), i.min())
+                print(n, " : ", c, i.shape, o.shape, o.max(), o.min())
 
-            # reduce dimension, sample, HIL, outlier, abnormal
+            # residual: set info[last relu][input_image]
+            prev_layer_name = layer_names[cnt - 1] if cnt >= 1 else None
+            if prev_layer_name in info and info[prev_layer_name]['module_name'] == 'residual' and info[n]['layer_index'] == 0:
+                info[prev_layer_name]['identity'] = residual_module_input[prev_output_idx].tolist()
+            
+            if info[n]['module_name'] == 'residual' and info[n]['layer_index'] == 0:
+                residual_module_input = i
+
+            # sampling, reduce dimension (input, output)
             input_idx = None
             output_idx = None
             softmax_output = None
@@ -165,7 +196,7 @@ def inference(log_dir, data_dir, model_name):
                 elif o.shape[0] > 1024:
                     output_idx = range(1024)
                     o = o[output_idx]
-            elif c == nn.ReLU:
+            elif c in [nn.ReLU, nn.BatchNorm2d, nn.MaxPool2d, nn.AdaptiveAvgPool2d]:
                 input_idx = prev_output_idx
                 output_idx = prev_output_idx
                 i = i[input_idx]
@@ -192,18 +223,16 @@ def inference(log_dir, data_dir, model_name):
                     input_idx = range(layer_weight.shape[0])
                 layer_weight = layer_weight[input_idx]
             else:
-                print("Need weight dimension reduction for module: ", n)
+                print("Need weight dimension reduction for layer: ", n)
                 quit()
 
             if layer_weight is not None:
                 print(n, " : ", i.shape, o.shape, layer_weight.shape)
             else:
                 print(n, " : ", i.shape, o.shape)
+            #print(input_idx)
+            #print(output_idx)
 
-            #torch.save(i, os.path.join(log_dir, f'{n}_input.pt'))
-            #torch.save(o, os.path.join(log_dir, f'{n}_output.pt'))
-            #torch.save(layer_weight, os.path.join(log_dir, f'{n}_weight.pth'))
-            info[n] = {}
             info[n]["class"] = c.__name__
             info[n]["input"] = i.tolist()
             info[n]["output"] = o.tolist()
@@ -212,11 +241,10 @@ def inference(log_dir, data_dir, model_name):
             if n == layer_names[-1]:
                 info[n]['output_index'] = output_idx.tolist()
                 info[n]['softmax_output'] = softmax_output.tolist()
-
+            
             prev_input_idx = input_idx
             prev_output_idx = output_idx
 
-        insert_module_info(info, model_name)
         #torch.save(state_dict, os.path.join(log_dir, 'weights.pth'))
         with open(os.path.join(log_dir, model_name+'_info.json'), "w") as f:
             json.dump(info, f)

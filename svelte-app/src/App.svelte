@@ -2,8 +2,6 @@
 	import { onMount } from 'svelte';
   import * as d3 from 'd3';
 
-	// import Overview from './Overveiw.svelte'
-	// import Conv from '.operators/Convolutional.svelte'
 
   //######################################################################//
   let selectedModel = undefined;
@@ -12,6 +10,7 @@
   let focusedModule = undefined;
   let modelSVG = undefined;
   let imageNum = 8;
+  const imagenetModels = ['alexnet', 'vgg16', 'googlenet', 'resnet18'];
   const imagenetClasses = {
       0: 'tench, Tinca tinca',
       1: 'goldfish, Carassius auratus',
@@ -1048,18 +1047,21 @@
   const offsetReLU = 5;
 
   function updateSVGSize(newWidth, newHeight) {
+    // 그려진 요소들의 범위를 계산
+    // const bounds = de.selsect(detailSVG).node().getBBox();
+
+    // // SVG의 크기를 콘텐츠의 크기에 맞게 조정
+    // detailSVG.attr('width', bounds.width)
+    //         .attr('height', bounds.height);
     d3.select('#detail-svg')
       .attr('width', newWidth)
       .attr('height', newHeight);
-    console.log(newHeight);
-    console.log(newWidth);
+    // console.log(newHeight);
+    // console.log(newWidth);
   }
 
   async function loadModelView() {
     modelSVG.selectAll('*').remove();
-
-    console.log(selectedModel)
-    console.log(selectedClass)
 
     const response = await fetch(`/output/${selectedClass}/${selectedModel}_info.json`);
     modelData = await response.json();
@@ -1068,7 +1070,83 @@
     // JSON 객체의 모든 키를 출력
     console.log("Keys in JSON:", Object.keys(modelData));
 
-    moduleStruct[selectedModel].forEach((moduleName, moduleIndex) => {
+    const moduleGroup = modelSVG.append('g').attr('class', 'module-group');
+
+    const modules = moduleGroup.selectAll('g')
+      .data(moduleStruct[selectedModel])
+      .enter()
+      .append('g')
+      .attr('class', 'module')
+      .attr('transform', (d, i) => `translate(${i * (moduelWidth + moduleXMargin)}, ${moduleYMargin})`);
+
+    // 각 하위 g 요소 안에 rect 추가
+    modules.append('rect')
+      .attr('width', moduelWidth)
+      .attr('height', moduleHeight)
+      .style('fill', (d) => moduleFills(d))
+      .style('stroke', 'gray')
+      .style('stroke-width', 0);
+
+    // 각 하위 g 요소 안에 text 추가
+    modules.append('text')
+      .attr('x', moduelWidth / 2)
+      .attr('y', moduleHeight / 2)
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'middle')
+      .text((d) => d)
+      .style('fill', 'black');
+
+      const expandedWidth = moduelWidth * 2; // 확장할 너비
+      const shiftDistance = expandedWidth - moduelWidth; // 확장으로 인해 밀어낼 거리
+
+      modules.each(function(d, i) {
+        const group = d3.select(this);
+
+        group.select('rect')
+          .on('mouseover', function() {
+            // Expand rect 
+            d3.select(this)
+              .transition()
+              .duration(500)
+              .attr('width', expandedWidth)
+              .style('stroke-width', 3);
+
+            // 현재 rect 오른쪽의 모든 rect를 오른쪽으로 밀어냄
+            modules.filter((_, j) => j > i)
+              .transition()
+              .duration(500)
+              .attr('transform', (d, j) => `translate(${((j + i + 1) * (moduelWidth + moduleXMargin)) + shiftDistance}, ${moduleYMargin})`);
+
+            // Hide text
+            group.select('text')
+              .transition()
+              .duration(500)
+              .style('opacity', 0);
+          })
+          .on('mouseout', function() {
+            // 모든 rect를 원래 크기로 복원
+            d3.select(this)
+              .transition()
+              .duration(500)
+              .attr('width', moduelWidth)
+              .style('stroke-width', 1);
+
+            // 모든 rect를 원래 위치로 복원
+            modules.transition()
+              .duration(500)
+              .attr('transform', (d, j) => `translate(${j * (moduelWidth + moduleXMargin)}, ${moduleYMargin})`);
+
+            // 모든 text를 다시 표시
+            modules.select('text')
+              .transition()
+              .duration(500)
+              .style('opacity', 1);
+        })
+        //Click Effect => Call 'showDetailVeiw'
+        .on('click', () => { showDetailView(d, i); });
+      });
+
+    function moduleFills(moduleName){
       let moduleFills = undefined;
       if (moduleName === 'conv'){
         moduleFills = 'green'
@@ -1085,205 +1163,258 @@
       else if (moduleName === 'inception'){
         moduleFills = 'gray'
       }
-
-      //modelSVG에 module 컨트롤 group 생성
-      let moduleGroup = modelSVG.append('g')
-          .datum([moduleName, moduleIndex])
-          .on('mouseover', function() {
-            d3.select(this).select('rect')
-              .transition()
-              .duration(250)
-              .style('stroke-width', 3);
-
-            // 텍스트에도 스타일 변경 적용
-            d3.select(this).select('text')
-              .transition()
-              .duration(250)
-              .style('font-weight', 700); 
-          })
-          .on('mouseout', function() {
-            d3.select(this).select('rect')
-              .transition()
-              .duration(250)
-              .style('stroke-width', 0);
-
-            // 텍스트 스타일을 원래대로 복원
-            d3.select(this).select('text')
-              .transition()
-              .duration(250)
-              .style('font-weight', 400); 
-          })
-          .on('click', function(event, d) {
-            showDetailView(d[0], d[1]); // 여기서 d는 데이텀
-          });
-      
-      // module 외곽선
-      moduleGroup.append('rect')
-          .attr('x', moduleIndex * (moduelWidth + moduleXMargin))
-          .attr('y', moduleYMargin)
-          .attr('width', moduelWidth)
-          .attr('height', moduleHeight)
-          .style('fill', moduleFills)
-          .style('stroke-width', 0)
-          .style('stroke', 'gray');
-      
-      // module 텍스트
-      moduleGroup.append('text')
-          .attr('x', moduleIndex * (moduelWidth + moduleXMargin) + moduelWidth / 2)
-          .attr('y', moduleYMargin + moduleHeight / 2)
-          .attr('text-anchor', 'middle') 
-          .attr('dominant-baseline', 'middle') 
-          .text(moduleName);
-    });
+      return moduleFills
+    }
   }
 
-  // 특정 module 클릭시 DetailView 생성
+  // Open Detail View of Selected Module
   function showDetailView(selectedModuleName, selectedModuleIndex) {
     document.getElementById('detail-view').style.display = 'block';
-    console.log(modelData)
     
-    let selectedModuleLayers = [];
+    /* Extract selected module's layers from modelData
+      modelData contains all layer information in json format */ 
+    const selectedModuleLayers = [];
+    const selectedModuleLayerNames = [];
     let moduleIndex = -1;
+    let inputLayer = undefined;
     for (const key in modelData) {
       if(modelData[key]['layer_index'] === 0){
         moduleIndex++;
       }
       if(moduleIndex === selectedModuleIndex){
         selectedModuleLayers.push(modelData[key]);
+        selectedModuleLayerNames.push(key);
+      }
+      else if(moduleIndex < selectedModuleIndex){
+        inputLayer = modelData[key]['output']
       }
     }
-    drawModuleDetail(selectedModuleName, selectedModuleLayers);
+    drawModuleDetail(selectedModuleName, selectedModuleLayers, inputLayer, selectedModuleLayerNames);
   }
-  // DetailView 닫기
+  // Close Detail View 
   function hideDetailView() {
     document.getElementById('detail-view').style.display = 'none';
   }
 
-  // Module Detail
-  function drawModuleDetail(moduleName, moduleLayers) {
+  // Call drawModule functions depending on the type of module
+  function drawModuleDetail(moduleName, moduleLayers, inputLayer, layerNames) {
     const detailSVG = d3.select('#detail-svg');
     detailSVG.selectAll('*').remove();
 
     if (moduleName === 'conv'){
         drawConvModuleDetail(moduleLayers);
-      }
-    // else if (moduleName === 'residual'){
-    //   drawResidualModuleDetail(moduleLayers);
-    // }
+    }
     else if (moduleName === 'avgpool'){
       drawAvgpoolModuleDetail(moduleLayers);
     }
     else if (moduleName === 'linear'){
-      drawLinearModuleDetail(moduleLayers);
+      drawLinearModuleDetail(moduleLayers, inputLayer);
     }
-    // else if (moduleName === 'inception'){
-    //   drawInceptionModuleDetail(moduleLayers);
-    // }
+    else if (moduleName === 'residual'){
+      drawResidualModuleDetail(moduleLayers, layerNames);
+    }
+    else if (moduleName === 'inception'){
+      // TODO(YSKIM)
+      // drawInceptionModuleDetail(moduleLayers);
+    }
   }
-  // Draw Conv Module
+
+  function drawConnectionLine(x1,y1,x2,y2,opcaity){
+    
+  }
+  // Draw Conv Module 
   function drawConvModuleDetail(moduleLayers){
     let reluCount = 0;
+    let x;
+    let y;
     moduleLayers.forEach((layer, layerIndex) => {
-      if(layerIndex === 0){
-        console.log(layer);
+      //Input Layer
+      if(layerIndex === 0){   
+        const inputX = moduleXPadding + (layerIndex - reluCount) * (imageWidth + offsetX);
+        const inputY = moduleYPadding + (offsetY);
 
-        const x = moduleXPadding + (layerIndex - reluCount) * (imageWidth + offsetX);
-        const y = moduleYPadding + (offsetY);
+        x = moduleXPadding + (layerIndex - reluCount + 1) * (imageWidth + offsetX);
+        y = moduleYPadding + (offsetY);
 
-        drawLayer(layer['input'], x, y, 1);
+        drawLayer(layer['input'], layerIndex, inputX, inputY, 'inline');
+        drawLayer(layer['output'], layerIndex, x, y, 'inline');
+        drawConnectionLine(inputX,inputY,x,y,0.5)
       }
-      if(layer['class'] === 'ReLU' && layerIndex > 0){
-        // const x = moduleXPadding + (layerIndex - reluCount) * (imageWidth + offsetX) + offsetReLU;
-        // const y = moduleYPadding + (offsetY - offsetReLU)
-        // reluCount++;
-        // drawLayer(layer['output'], x, y, 0);
+      //ReLU & BatchNorm Layer
+      else if(layer['class'] === 'ReLU' || layer['class'] === 'BatchNorm2d'){
+        reluCount++;
+        x = moduleXPadding + (layerIndex - reluCount + 1) * (imageWidth + offsetX);
+        y = moduleYPadding + (offsetY)
+        drawLayer(layer['output'], layerIndex, x, y, 'none');
       }
-      else{
-        const x = moduleXPadding + (layerIndex - reluCount + 1) * (imageWidth + offsetX);
-        const y = moduleYPadding + (offsetY);
-        drawLayer(layer['output'], x, y, 1);
+      //Other Layers (Conv, Pool)
+      else if(layer['class'] === 'Conv2d' || layer['class'].includes('Pool')){
+        x = moduleXPadding + (layerIndex - reluCount + 1) * (imageWidth + offsetX);
+        y = moduleYPadding + (offsetY);
+        drawLayer(layer['output'], layerIndex, x, y, 'inline');
       }
     });
   }
 
+  // Draw Avgpool Module
   function drawAvgpoolModuleDetail(moduleLayers){
     moduleLayers.forEach((layer, layerIndex) => {
+      //Input Layer 
       if(layerIndex === 0){
-        console.log(layer);
 
         const x = moduleXPadding + (layerIndex) * (imageWidth + offsetX);
         const y = moduleYPadding + (offsetY);
 
-        drawLayer(layer['input'], x, y, 1);
+        drawLayer(layer['input'], layerIndex, x, y, 'inline');
       }
+      // Other Layers (Pool)
       const x = moduleXPadding + (layerIndex + 1) * (imageWidth + offsetX);
       const y = moduleYPadding + (offsetY)
-      drawLayer(layer['output'], x, y, 1);
+      drawLayer(layer['output'], layerIndex, x, y, 'inline');
     });
   }
   
-  function drawLinearModuleDetail(moduleLayers){
-    console.log(moduleLayers);
+  // Draw Linear Module
+  function drawLinearModuleDetail(moduleLayers, inputLayer){
     let reluCount = 0;
     moduleLayers.forEach((layer, layerIndex) => {
+      //Input Layer (Original input, Flatten input)
       if(layerIndex === 0){
-        console.log(layer);
-
         const inputX = moduleXPadding + (layerIndex - reluCount) * (imageWidth + offsetX);
         const inputY = moduleYPadding + (offsetY);
-
-        drawLayer(layer['input'], inputX, inputY, 1);
+        drawLayer(inputLayer, layerIndex, inputX, inputY, 'inline');
 
         const x = moduleXPadding + (layerIndex - reluCount + 1) * (imageWidth + offsetX);
         const y = moduleYPadding + (offsetY);
-
-        drawFlatten3D(layer['output'], x, y, 1);
+        drawFlatten3D(inputLayer, layerIndex, x, y, 'inline');
       }
-      else if(layer['class'] === 'ReLU' && layerIndex > 0){
-        // const x = moduleXPadding + (layerIndex - reluCount) * (imageWidth + offsetX) + offsetReLU;
-        // const y = moduleYPadding + (offsetY - offsetReLU)
-        // reluCount++;
-        // drawLayer(layer['output'], x, y, 0);
+      //Last Layer contains Top-10 prediction labes (output_index) and probability (output)
+      if(layerIndex === (moduleLayers.length - 1)){
+        //TODO(YSKIM): Print top 10 labels
+        // const x = moduleXPadding + (layerIndex - reluCount + 1) * (imageWidth + offsetX);
+        // const y = moduleYPadding + (offsetY);
+        //drawPredcition(layer, x, y, 1);
       }
-      else{
-        const x = moduleXPadding + (layerIndex - reluCount + 1) * (imageWidth + offsetX);
+      //ReLU Layer
+      else if(layer['class'] === 'ReLU'){
+        reluCount++;
+        const x = moduleXPadding + (layerIndex - reluCount + 2) * (imageWidth + offsetX);
         const y = moduleYPadding + (offsetY);
-        darwFlatten(layer['output'], x, y, 1);
+        drawLinear(layer['output'], layerIndex, x, y, 'none');
+      }
+      //Other Layers (Linear)
+      else if(layer['class'] === 'Linear'){
+        const x = moduleXPadding + (layerIndex - reluCount + 2) * (imageWidth + offsetX);
+        const y = moduleYPadding + (offsetY);
+        drawLinear(layer['output'], layerIndex, x, y, 'inline');
       }
     });
   }
+
+  // Draw Residual Module
+  function drawResidualModuleDetail(moduleLayers, layerNames){  
+    let reluCount = 0;
+    const residualY = imageHeight;
+    console.log(layerNames)
+    console.log(moduleLayers)
+    moduleLayers.forEach((layer, layerIndex) => {
+      //last RelU Layer includes identify
+      if(layerIndex === (moduleLayers.length - 1)){   
+        const inputX = moduleXPadding;
+        const inputY = moduleYPadding + (offsetY) + residualY;
+        const x = moduleXPadding + (layerIndex - reluCount + 1) * (imageWidth + offsetX);
+        const y = moduleYPadding + (offsetY) + residualY;
+        const x1 = inputX + imageWidth/2;
+        const x2 = x + imageWidth/2;
+        drawShortcut(x1, x2, y, 1);
+        // drawLayer(layer['idetify'], 0, inputX, inputY, 1);
+
+        drawLayer(layer['input'], layerIndex-1, x, y, 'inline');
+      }
+      else if(layer['class'] === 'ReLU' || layer['class'] === 'BatchNorm2d'){
+        reluCount++;
+        x = moduleXPadding + (layerIndex - reluCount + 1) * (imageWidth + offsetX);
+        y = moduleYPadding + (offsetY)
+        drawLayer(layer['output'], layerIndex, x, y, 'none');
+      }
+      else if(layerNames[layerIndex].includes('downsample')){
+        const x1 = moduleXPadding + (layerIndex - reluCount + 1) * (imageWidth + offsetX);
+        const y1 = moduleYPadding + (offsetY) + residualY;
+
+        // const x2 = 
+        // cosnt y2 = 
+
+        // drawIdentify(layer['output'], x1, x2, y1, 1);
+      } 
+      else if(layer['class'] === 'Conv2d' || layer['class'].includes('Pool')){
+        const x = moduleXPadding + (layerIndex - reluCount + 1) * (imageWidth + offsetX);
+        const y = moduleYPadding + (offsetY) + residualY;
+        drawLayer(layer['output'], layerIndex, x, y, 'inline');
+      }
+    });
+
+    function drawShortcut(x1, x2, y0, z){
+      const detailSVG = d3.select('#detail-svg');
+      const stepBeforeLine = d3.line()
+                            .x(d => d[0])
+                            .y(d => d[1])
+                            .curve(d3.curveStepBefore);
+      const stepAfterLine = d3.line()
+                            .x(d => d[0])
+                            .y(d => d[1])
+                            .curve(d3.curveStepAfter);
+      let y1;
+      let y2;
+      for(let i = 0; i < imageNum; i++){
+        const shortcutGroup = detailSVG.append('g')
+                              .attr('id', `shortcutgroup-${i}`);
+        y1 = y0 + i * (imageHeight + offsetY);
+        y2 = i < imageNum / 2 ? y0 - (imageHeight + offsetY) : y0 + (imageNum + 1) * (imageHeight + offsetY) + imageHeight;
+
+        const pathData1 = [
+          [x1, y1],
+          [(x1 + x2) / 2, y2]
+        ];
+
+        const pathData2 = [
+          [(x1 + x2) / 2, y2],
+          [x2, y1]
+        ];
+          
+        shortcutGroup.append('path')
+          .attr('d', stepBeforeLine(pathData1))
+          .attr('fill', 'none')
+          .attr('stroke', 'black')
+          .attr('class',`line-${i}`)
+          .attr('stroke-width', 2)
+          .style('stroke-opacity', 0);
+          
+        shortcutGroup.append('path')
+          .attr('d', stepAfterLine(pathData2))
+          .attr('fill', 'none')
+          .attr('stroke', 'black')
+          .attr('class',`line-${i}`)
+          .attr('stroke-width', 2)
+          .style('stroke-opacity', 0);
+      }
+      detailSVG.selectAll('path.line-0').style('stroke-opacity', 1)
+      updateSVGSize(x2 + imageWidth, y2);
+    }
+    function drawDownSample(layer, x1, y1, x2, y2, z){
+  
+    }
+  }
+  
+  // Draw Inception Module
   function drawInceptionModuleDetail(moduleLayers){
   }
-  function drawResidualModuleDetail(moduleLayers){  
-    let reluCount = 0;
-    moduleLayers.forEach((layer, layerIndex) => {
-      if(layerIndex === 0){
-        console.log(layer);
 
-        const x = moduleXPadding + (layerIndex - reluCount) * (imageWidth + offsetX);
-        const y = moduleYPadding + (offsetY);
 
-        drawLayer(layer['input'], x, y, 1);
-      }
-      if(layer['class'] === 'ReLU' && layerIndex > 0){
-        // const x = moduleXPadding + (layerIndex - reluCount) * (imageWidth + offsetX) + offsetReLU;
-        // const y = moduleYPadding + (offsetY - offsetReLU)
-        // reluCount++;
-        // drawLayer(layer['output'], x, y, 0);
-      }
-      else{
-        const x = moduleXPadding + (layerIndex - reluCount + 1) * (imageWidth + offsetX);
-        const y = moduleYPadding + (offsetY);
-        drawLayer(layer['output'], x, y, 1);
-      }
-    });
+  function drawFlatten3D(layer, layerIndex, x, y){
+    const flatImages = layer.flat(3);
+    drawLinear(flatImages, layerIndex, x, y);
   }
-  function drawFlatten3D(layerImages, x, y, z){
-    const flatImages = layerImages.flat(3);
-    darwFlatten(flatImages, x, y, z);
-  }
-  function darwFlatten(layer, x, y, z){
-
+  function drawLinear(layer, layerIndex, x, y, display = 'inline'){
     const [max, min] = getLayerMaxMin(layer);
     const largerAbsValue = Math.max(Math.abs(min), Math.abs(max));
     const colorScale = d3.scaleLinear()
@@ -1292,31 +1423,43 @@
 
     const detailSVG = d3.select('#detail-svg');
     const flattenLayerGroup = detailSVG.append('g')
-      .attr('class', 'flatten-layer');
+      .attr('class', 'linear-layer')
+      .attr('transform', `translate(${x}, ${y})`)
+      .style('display', display);
 
-    const flattenLayerHeight = imageHegiht + (offsetY + imageHeight) * (imageNum - 1);
-    const flattenRectHeight = flattenLayerHeight / flatImages.length;
-    const flattenRectWidth = 20;
+    const layerHeight = (imageHeight + offsetY) * imageNum - offsetY;
+    const layerWidth = 40;
+    const linearRectHeight = layerHeight / layer.length;
+    const linearRectWidth = layerWidth;
 
-    flatImages.forEach((value, index) => {
+    layer.forEach((value, index) => {
       flattenLayerGroup.append('rect')
-        .attr('x', x)
-        .attr('y', y + index * flattenRectHeight)
-        .attr('z', z)
-        .attr('width', flattenRectWidth)
-        .attr('height', flattenRectHeight)
+        .attr('x', 0)
+        .attr('y', linearRectHeight * index)
+        .attr('width', linearRectWidth)
+        .attr('height', linearRectHeight)
+        .attr('id', `Linear-${layerIndex}-${index}`)
         .style('fill', colorScale(value))
+        .style('stroke', 'black')
+        .style('stroke-opacity', 0.5);
     });
+
+    const currentWidth = detailSVG.attr('width');
+    const currentHeight = detailSVG.attr('height');
+    const requiredWidth = Math.max(currentWidth, x + layerWidth);
+    const requiredHeight = Math.max(currentHeight, y + layerHeight);
+
+    updateSVGSize(requiredWidth, requiredHeight);
   }
 
-  function drawLayer(layerImages, layerX, layerY, z){
+  // Draw a layer which is contains IR results (Image or Linear)
+  function drawLayer(layerImages, layerIndex, layerX, layerY, display){
+    // Color Sacle of the layer images
     const [max, min] = getLayerMaxMin3D(layerImages);
     const largerAbsValue = Math.max(Math.abs(min), Math.abs(max));
     const colorScale = d3.scaleLinear()
     .domain([-largerAbsValue, 0, largerAbsValue])
     .range(['red', 'green', 'blue']); 
-    // console.log(-largerAbsValue)
-    // console.log(largerAbsValue)
 
     let ImageX = 0;
     let ImageY = 0;
@@ -1324,56 +1467,58 @@
       ImageX = layerX;
       ImageY = layerY + (imageHeight + offsetY) * (imageIndex);
 
-      // console.log('x: '+ ImageX + ', y: ' + ImageY)
-
-      drawImage(image, colorScale, ImageX, ImageY, z);
+      drawImage(image, layerIndex, imageIndex, colorScale, ImageX, ImageY, display);
     });
 
+
+    // If layers over the svg size, update svg size.
     const detailSVG = d3.select('#detail-svg');
     const imageSize = 133;
     const currentWidth = detailSVG.attr('width');
     const currentHeight = detailSVG.attr('height');
     const requiredWidth = Math.max(currentWidth, ImageX + imageSize);
     const requiredHeight = Math.max(currentHeight, ImageY + imageSize);
-    // console.log(requiredWidth)
-    // console.log(requiredHeight)
 
     updateSVGSize(requiredWidth, requiredHeight);
 
-    //TODO(YSKIM): Legend 그리기 해야함
+    //TODO(YSKIM): Make Legend 
     console.log('draw legend')
   }
-  function drawImage(image, colorScale, x, y, z) {
+
+
+  //Draw an Image
+  function drawImage(image, layerIndex, imageIndex, colorScale, x, y, display) {
     const cellSize = 133 / image.length;
     const numRows = image.length;
-    const numCols = image[0].length; // 가정: 모든 행이 동일한 길이를 가짐
+    const numCols = image[0].length; 
 
     const imageCells = d3.select('#detail-svg')
     .append('g')
-    // .attr('id', '')
-    .attr('transform', `translate(${x}, ${y})`);
+    .attr('class', 'IntermediateResult')
+    .attr('id', `IR-${layerIndex}-${imageIndex}`)
+    .attr('transform', `translate(${x}, ${y})`)
+    .style('display', display);
     
     image.forEach((row, rowIndex) => {
       row.forEach((value, colIndex) => {
         const cell = imageCells.append('rect')
           .attr('x', colIndex * cellSize)
           .attr('y', rowIndex * cellSize)
-          .attr('z', z)
           .attr('width', cellSize)
           .attr('height', cellSize)
           .style('fill', colorScale(value));
           
-        // 가장자리 셀에 대한 외곽선 조건적 추가
-        if (rowIndex === 0) { // 상단 가장자리
+        // Adding Outline for Edge Cells
+        if (rowIndex === 0) { // Top
           drawLine(colIndex, rowIndex, colIndex + 1, rowIndex);
         }
-        if (rowIndex === numRows - 1) { // 하단 가장자리
+        if (rowIndex === numRows - 1) { // Bottom
           drawLine(colIndex, rowIndex + 1, colIndex + 1, rowIndex + 1);
         }
-        if (colIndex === 0) { // 좌측 가장자리
+        if (colIndex === 0) { // Left
           drawLine(colIndex, rowIndex, colIndex, rowIndex + 1);
         }
-        if (colIndex === numCols - 1) { // 우측 가장자리
+        if (colIndex === numCols - 1) { // Right
           drawLine(colIndex + 1, rowIndex, colIndex + 1, rowIndex + 1);
         }
       });
@@ -1391,10 +1536,9 @@
 
   function getLayerMaxMin3D(layerImages) {
     const flatImages = layerImages.flat(3);
-    // const sortedImages = flatImages.sort((a, b) => a - b);
-
     return getLayerMaxMin(flatImages);
   }
+  
   function getLayerMaxMin(flatArray) {
     const max = Math.max(...flatArray);
     const min = Math.min(...flatArray);
@@ -1434,14 +1578,12 @@
     margin-top: 20px;
     height: 100%;
 }
-
 </style>
 
 <select bind:value={selectedModel}>
-  <option value='alexnet'>AlexNet</option>
-  <option value='vgg16'>VGG</option>
-  <option value='googlenet'>GoogleNet</option>
-  <option value='resnet18'>ResNet</option>
+  {#each imagenetModels as modelName}
+  <option value={modelName}>{modelName}</option>
+  {/each}
 </select>
 <select bind:value={selectedClass}>
   {#each Object.entries(imagenetClasses) as [index, className]}

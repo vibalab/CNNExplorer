@@ -39,6 +39,7 @@ module_start_name_dict = {
         }
 
 def insert_module_info(info, model_name):
+    order_index = 0
     module_index = -1
     layer_index = 0
     for k in info.keys():
@@ -47,9 +48,11 @@ def insert_module_info(info, model_name):
             layer_index = 0 
         else:
             layer_index += 1
+        info[k]['order_index'] = order_index
         info[k]['module_index'] = module_index
         info[k]['layer_index'] = layer_index
         info[k]['module_name'] = module_start_name_dict[model_name][1][module_index]
+        order_index += 1
 
 def hook_fn(m, i, o):
     if m._layer_name in layer_names:
@@ -57,8 +60,11 @@ def hook_fn(m, i, o):
     else:
         layer_names.append(m._layer_name)
     layer_classes.append(m.__class__)
-    layer_inputs.append(i[0].squeeze(0))
-    layer_outputs.append(o[0])
+    layer_inputs.append(i[0].squeeze(0).detach().clone())
+    layer_outputs.append(o[0].detach().clone())
+    print(m._layer_name)
+    #if "relu" in m._layer_name or "bn2" in m._layer_name:
+    #    breakpoint()
 
 def check_layer(name, module):
     if not hasattr(module, "_modules"):
@@ -96,6 +102,7 @@ def load_pretrained_model(model_name, numbering):
 
     weight_file = f"weights/{model_name}_{numbering}_weights.pth"
     model.load_state_dict(torch.load(weight_file))
+    ReLU_inplace_to_False(model)
     model.eval()
 
     hook_all_layers(model)
@@ -111,8 +118,12 @@ def get_layer_state(state_dict, layer_name):
 
 def ReLU_inplace_to_False(module):
     # https://stackoverflow.com/questions/74124725/setting-relu-inplace-to-false
+    #for layer in module._modules.values():
+    #    if isinstance(layer, nn.ReLU):
+    #        layer.inplace = False
+    #    ReLU_inplace_to_False(layer)
     for layer in module._modules.values():
-        if isinstance(layer, nn.ReLU):
+        if hasattr(layer, "inplace"):
             layer.inplace = False
         ReLU_inplace_to_False(layer)
 
@@ -123,9 +134,9 @@ def inference(log_dir, data_dir, model_name):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # need inplace=False for proper hook results
-    ReLU_inplace_to_False(model)
+    #ReLU_inplace_to_False(model)
     model.to(device)
-    model.eval()
+    #model.eval()
 
     data_transforms = transforms.Compose([
         transforms.Resize(256),
@@ -137,7 +148,6 @@ def inference(log_dir, data_dir, model_name):
     img = Image.open(data_dir)
     data = data_transforms(img)
     data = data.unsqueeze(0)
-    print(data.max(), data.min())
     info = {}
 
     with torch.no_grad():
@@ -146,8 +156,8 @@ def inference(log_dir, data_dir, model_name):
         layer_outputs.clear()
         outputs = model(data)
 
-        for h in hook_handles:
-            h.remove()
+        #for h in hook_handles:
+        #    h.remove()
 
         state_dict = model.state_dict()
         prev_input_idx = None
@@ -159,64 +169,94 @@ def inference(log_dir, data_dir, model_name):
             info[n] = {}
         insert_module_info(info, model_name)
 
+        # create info
         for cnt, (i, o, n, c) in enumerate(zip(layer_inputs, layer_outputs, layer_names, layer_classes)):
             i = i.cpu().numpy()
             o = o.cpu().numpy()
-
+            info[n]["input"] = i
+            info[n]["output"] = o
+            info[n]["class"] = c
+           
             layer_state = get_layer_state(state_dict, n)
             layer_weight = None
             if n+".weight" in layer_state:
                 layer_weight = layer_state[n+".weight"].cpu().numpy()
                 print(n, " : ", c, i.shape, o.shape, layer_weight.shape, o.max(), o.min())
             else:
-                print(n, " : ", c, i.shape, o.shape, o.max(), o.min())
+                print(n, " : ", c, i.shape, o.shape, o.max(), o.min())    
+            info[n]["weight"] = layer_weight if layer_weight is not None else None
 
-            # residual: set info[last relu][input_image]
-            prev_layer_name = layer_names[cnt - 1] if cnt >= 1 else None
-            if prev_layer_name in info and info[prev_layer_name]['module_name'] == 'residual' and info[n]['layer_index'] == 0:
-                info[prev_layer_name]['identity'] = residual_module_input[prev_output_idx].tolist()
-            
-            if info[n]['module_name'] == 'residual' and info[n]['layer_index'] == 0:
-                residual_module_input = i
+        # get residual info
+        for n in info:
+            # count residual module size
+            if info[n]["module_name"] == "residual":
+                midx = info[n]["module_index"]
+                lidx = info[n]["layer_index"]
+                msize = sum([info[k]["module_index"] == midx for k in info])
+                # if last layer set first layer input or downsample output as identity
+                ds_layer_name = n[:-6]+".downsample.1"
+                if lidx + 1 == msize:
+                    ds_layer_name = n[:-6]+".downsample.1"
+                    if ds_layer_name in info:
+                        identity = [info[ds_layer_name]["output"]]
+                    else:
+                        identity = [info[k]["input"] for k in info if info[k]["module_index"] == midx and info[k]["layer_index"] == 0]
+                    info[n]["identity"] = identity[0]
+                    print(n, info[n]["module_index"], identity[0].shape)
 
-            # sampling, reduce dimension (input, output)
+        # set sampling index
+        for n in info:
             input_idx = None
             output_idx = None
             softmax_output = None
+            
+            i = info[n]["input"]
+            o = info[n]["output"]
+            c = info[n]["class"]
+            
             if c == nn.Linear:
+                # Linear: first 1024
+                # Last Linear: top 10 cls
                 if i.shape[0] > 1024:
                     input_idx = range(1024)
-                    i = i[input_idx]
                 if n == layer_names[-1]:
                     output_idx = (-o).argsort()[:10]
                     y = np.exp(o - np.max(o))
                     softmax_output = y / np.sum(np.exp(o)) * np.exp(np.max(o))
-                    o = o[output_idx]
                     softmax_output = softmax_output[output_idx]
                 elif o.shape[0] > 1024:
                     output_idx = range(1024)
-                    o = o[output_idx]
             elif c in [nn.ReLU, nn.BatchNorm2d, nn.MaxPool2d, nn.AdaptiveAvgPool2d]:
-                input_idx = prev_output_idx
-                output_idx = prev_output_idx
-                i = i[input_idx]
-                o = o[output_idx]
-            else:
+                # get previous output index
+                k = list(info)[info[n]['order_index'] - 1]
+                input_idx = info[k]['output_index']
+                output_idx = info[k]['output_index']
+            else: # Conv
+                # first 8 or get previous output index 
                 if i.shape[0] > 8:
-                    input_idx = range(8)
-                    i = i[input_idx]
+                    if prev_output_idx is not None:
+                        input_idx = prev_output_idx
+                    else:
+                        input_idx = range(8)
+                # set based on sampling method 
                 if o.shape[0] > 8:
+                    # get activation value
                     output_idx = range(8)
-                    o = o[output_idx]
+                    for ii in range(info[n]['order_index'], len(info)):
+                        if info[list(info)[ii]]["class"] == nn.ReLU:
+                            activation = info[list(info)[ii]]["output"]
+                            avg_activation = np.mean(activation, axis=(1,2))
+                            output_idx = (-avg_activation).argsort()[:8]
+                            break
 
-            # reduce dimension (weight)
+            layer_weight = info[n]['weight']
             if layer_weight is None:
                 pass
             elif c == nn.Conv2d or c == nn.Linear:
                 if input_idx is None:
                     input_idx = range(layer_weight.shape[1])
                 if output_idx is None:
-                    output_idx = range(layer_weight.shape[0]) 
+                    output_idx = range(layer_weight.shape[0])
                 layer_weight = layer_weight[output_idx][:,input_idx]
             elif c == nn.BatchNorm2d:
                 if input_idx is None:
@@ -225,27 +265,33 @@ def inference(log_dir, data_dir, model_name):
             else:
                 print("Need weight dimension reduction for layer: ", n)
                 quit()
-
+            
+            input_idx = np.array(input_idx)
+            output_idx = np.array(output_idx)
+            i = i[input_idx]
+            o = o[output_idx]
+            print(input_idx)
+            print(output_idx)
+            info[n]['class'] = info[n]['class'].__name__
+            info[n]['input'] = i.tolist()
+            info[n]['output'] = o.tolist()
+            info[n]['input_index'] = input_idx.tolist()
+            info[n]['output_index'] = output_idx.tolist()
+            if n == layer_names[-1]:
+                info[n]['softmax_output'] = softmax_output.tolist()
+        
             if layer_weight is not None:
+                info[n]['weight'] = layer_weight.tolist()
                 print(n, " : ", i.shape, o.shape, layer_weight.shape)
             else:
                 print(n, " : ", i.shape, o.shape)
-            #print(input_idx)
-            #print(output_idx)
 
-            info[n]["class"] = c.__name__
-            info[n]["input"] = i.tolist()
-            info[n]["output"] = o.tolist()
-            info[n]["weight"] = layer_weight.tolist() if layer_weight is not None else None
-            
-            if n == layer_names[-1]:
-                info[n]['output_index'] = output_idx.tolist()
-                info[n]['softmax_output'] = softmax_output.tolist()
-            
-            prev_input_idx = input_idx
-            prev_output_idx = output_idx
-
-        #torch.save(state_dict, os.path.join(log_dir, 'weights.pth'))
+        # set residual info / apply sampling index
+        for cnt, n in enumerate(info):
+            if "identity" in info[n]:
+                prev_output_index = info[list(info)[cnt-1]]["output_index"]
+                info[n]["identity"] = info[n]["identity"][prev_output_index].tolist()
+        
         with open(os.path.join(log_dir, model_name+'_info.json'), "w") as f:
             json.dump(info, f)
     with open(os.path.join(log_dir, 'module_info.json'), "w") as f:

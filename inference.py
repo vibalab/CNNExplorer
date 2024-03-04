@@ -285,6 +285,8 @@ def inference(log_dir, data_dir, model_name):
                 print(n, " : ", i.shape, o.shape, layer_weight.shape)
             else:
                 print(n, " : ", i.shape, o.shape)
+            #print(input_idx)
+            #print(output_idx)
 
         # set residual info / apply sampling index
         for cnt, n in enumerate(info):

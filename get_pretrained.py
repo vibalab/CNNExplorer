@@ -1,3 +1,4 @@
+import os
 import torch
 import torchvision
 from torchvision.models import (alexnet, vgg16, googlenet, resnet50, resnet101, densenet121,
@@ -37,19 +38,27 @@ def get_model(model_name, weight_version):
 # Function to save model weights
 def save_model_weights(model, model_name):
     # Save the model weights in the current directory
+    if not os.path.exists('weights'):
+        os.makedirs('weights', exist_ok = True) 
     torch.save(model.state_dict(), f"weights/{model_name}_weights.pth")
 
-# Get user input
-model_name = input("Enter the model name: ")
-weight_version = int(input("Enter the weight version number (starting from 0): "))
 
-# Get the model
-model = get_model(model_name, weight_version)
 
-# Print model list in torchvision.model
-for name in dir(torchvision.models):
-    print(name)
+def main():
+    # Get user input
+    model_name = input("Enter the model name: ")
+    weight_version = int(input("Enter the weight version number (starting from 0): "))
 
-if model:
-    # Save the model weights
-    save_model_weights(model, model_name+'_'+str(weight_version))
+    # Get the model
+    model = get_model(model_name, weight_version)
+
+    # Print model list in torchvision.model
+    for name in dir(torchvision.models):
+        print(name)
+
+    if model:
+        # Save the model weights
+        save_model_weights(model, model_name+'_'+str(weight_version))
+
+if __name__ == '__main__':
+    main()

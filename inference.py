@@ -11,6 +11,7 @@ from PIL import Image
 
 from convert_weight_to_json import *
 from convert_tensor_to_json import *
+from utils import download_all_models
 
 layer_inputs = []
 layer_outputs = []
@@ -95,6 +96,8 @@ def load_pretrained_model(model_name, numbering):
         return None
 
     weight_file = f"weights/{model_name}_{numbering}_weights.pth"
+    if not os.path.exists(weight_file):
+        download_all_models()
     model.load_state_dict(torch.load(weight_file))
     model.eval()
 

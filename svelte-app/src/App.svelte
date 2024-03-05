@@ -231,8 +231,21 @@
     }
   }
 
-  function drawConnectionLine(x1,y1,x2,y2,opcaity){
-    
+  function horizontalConnectionLine(x1,y1,x2,y2,opcaity){
+    // lines = connections.map(conn => {
+    //   const sourceImage = images.find(img => img.id === conn.source);
+    //   const targetImage = images.find(img => img.id === conn.target);
+
+    //   const link = d3.linkHorizontal()
+    //                   .source(() => [sourceImage.x + sourceImage.width, sourceImage.y + sourceImage.height / 2])
+    //                   .target(() => [targetImage.x, targetImage.y + targetImage.height / 2]);
+
+    //   return svg.append('path')
+    //           .attr('d', link())
+    //           .attr('fill', 'none')
+    //           .attr('stroke', 'gray')
+    //           .attr('stroke-width', 1)
+    //           .attr('id', `line-${conn.source}-${conn.target}`);
   }
   // Draw Conv Module 
   function drawConvModuleDetail(moduleLayers){
@@ -296,6 +309,7 @@
   function drawLinearModuleDetail(moduleLayers, inputLayer){
     let visibleLayerIndex = 0;
     let reluCount = 0;
+    console.log(moduleLayers)
     moduleLayers.forEach((layer, layerIndex) => {
       //Input Layer (Original input, Flatten input)
       if(layerIndex === 0){
@@ -305,7 +319,7 @@
 
         const x = moduleXPadding + (visibleLayerIndex + 1) * (imageWidth + offsetX);
         const y = moduleYPadding + (offsetY);
-        drawFlatten3D(inputLayer, layerIndex, x, y, 'inline', 'input');
+        drawFlatten3D(inputLayer, 0, 0, x, y, 'inline', 'input');
       }
       //Last Layer contains Top-10 prediction labes (output_index) and probability (output)
       if(layerIndex === (moduleLayers.length - 1)){
@@ -317,17 +331,17 @@
       //ReLU Layer
       else if(layer['class'] === 'ReLU'){
         reluCount++;
-        const x = moduleXPadding + (visibleLayerIndex + 2) * (imageWidth + offsetX);
+        const x = moduleXPadding + (visibleLayerIndex + 1) * (imageWidth + offsetX);
         const y = moduleYPadding + (offsetY);
-        drawLinear(layer['output'], layerIndex, x, y, 'none', layer['class']);
+        drawLinear(layer['output'], visibleLayerIndex, reluCount, x, y, 'none', layer['class']);
       }
       //Other Layers (Linear)
       else if(layer['class'] === 'Linear'){
         visibleLayerIndex++;
-        reluCount=0;
-        const x = moduleXPadding + (visibleLayerIndex + 2) * (imageWidth + offsetX);
+        reluCount = 0;
+        const x = moduleXPadding + (visibleLayerIndex + 1) * (imageWidth + offsetX);
         const y = moduleYPadding + (offsetY);
-        drawLinear(layer['output'], layerIndex, x, y, 'inline', layer['class']);
+        drawLinear(layer['output'], visibleLayerIndex, reluCount, x, y, 'inline', layer['class']);
       }
     });
   }
@@ -440,12 +454,12 @@
   function drawInceptionModuleDetail(moduleLayers){
   }
 
-  function drawFlatten3D(layer, layerIndex, x, y){
+  function drawFlatten3D(layer, visibleLayerIndex, layerIndex, x, y, display = 'inline', layerClass){
     const flatImages = layer.flat(3);
-    drawLinear(flatImages, layerIndex, x, y);
+    drawLinear(flatImages, visibleLayerIndex, layerIndex, x, y, display, layerClass);
   }
 
-  function drawLinear(layer, layerIndex, x, y, display = 'inline'){
+  function drawLinear(layer, visibleLayerIndex, layerIndex, x, y, display = 'inline', layerClass){
     const [max, min] = getLayerMaxMin(layer);
     const boundaryValue = Math.max(Math.abs(min), Math.abs(max));
     const colorScale = d3.scaleLinear()
@@ -453,10 +467,11 @@
     .range(['red', 'blue']); 
 
     const detailSVG = d3.select('#detail-svg');
-    const flattenLayerGroup = detailSVG.append('g')
-      .attr('class', 'linear-layer')
-      .attr('transform', `translate(${x}, ${y})`)
-      .style('display', display);
+    const linearLayerGroup = detailSVG.append('g')
+                              .attr('class', `IntermediateResult-${layerClass}`)
+                              .attr('id', `IR-${visibleLayerIndex}-${layerIndex}-0`)
+                              .attr('transform', `translate(${x}, ${y})`)
+                              .style('display', display);
 
     const layerHeight = (imageHeight + offsetY) * imageNum - offsetY;
     const layerWidth = 40;
@@ -464,12 +479,12 @@
     const linearRectWidth = layerWidth;
 
     layer.forEach((value, index) => {
-      flattenLayerGroup.append('rect')
+      linearLayerGroup.append('rect')
         .attr('x', 0)
         .attr('y', linearRectHeight * index)
         .attr('width', linearRectWidth)
         .attr('height', linearRectHeight)
-        .attr('id', `Linear-${layerIndex}-${index}`)
+        .attr('id', `block-${index}`)
         .style('fill', colorScale(value))
         .style('stroke', 'black')
         .style('stroke-opacity', 0.5);
@@ -536,6 +551,7 @@
         const cell = imageCells.append('rect')
           .attr('x', colIndex * cellSize)
           .attr('y', rowIndex * cellSize)
+          .attr('id', `blcok-${rowIndex}-${colIndex}`)
           .attr('width', cellSize)
           .attr('height', cellSize)
           .style('fill', colorScale(value));
@@ -668,7 +684,7 @@
 
 <div id="model-load"></div>
 
-<Modal isOpen={openModal} toggle={closeDetailView}>
+<Modal isOpen={openModal} toggle={closeDetailView} size='lg'>
   <ModalHeader toggle={closeDetailView}>
     <p>Detail View</p>
   </ModalHeader>
@@ -684,3 +700,7 @@
     </div>
   </ModalFooter>
 </Modal>
+
+<!-- <div id='overview'>
+	<Overview />
+</div> -->

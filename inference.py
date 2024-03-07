@@ -140,14 +140,29 @@ def inference(log_dir, data_dir, model_name):
 
     data_transforms = transforms.Compose([
         transforms.Resize(256),
-        transforms.CenterCrop(227 if model_name == "alexnet" else 224),
-        transforms.ToTensor(),
+        # For identical input, keep 224 instead of 227
+        #transforms.CenterCrop(227 if model_name == "alexnet" else 224),
+        transforms.CenterCrop(224),
+        transforms.ToTensor()
+    ])
+    
+    data_normalize = transforms.Compose([
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
+    to_image = torchvision.transforms.ToPILImage()
 
     img = Image.open(data_dir)
     data = data_transforms(img)
+
+    original_image = to_image(data)
+    original_image.save(os.path.join(log_dir, 'image.png'))
+    for c in range(3):
+        rgb_image = to_image(data[c, :].unsqueeze(0))
+        rgb_image.save(os.path.join(log_dir, f'image_{c}.png'))
+
+    data = data_normalize(data)
     data = data.unsqueeze(0)
+
     info = {}
 
     with torch.no_grad():
@@ -245,7 +260,7 @@ def inference(log_dir, data_dir, model_name):
                     for ii in range(info[n]['order_index'], len(info)):
                         if info[list(info)[ii]]["class"] == nn.ReLU:
                             activation = info[list(info)[ii]]["output"]
-                            avg_activation = np.mean(activation, axis=(1,2))
+                            avg_activation = np.abs(np.mean(activation, axis=(1,2)))
                             output_idx = (-avg_activation).argsort()[:8]
                             break
 
@@ -311,7 +326,7 @@ if __name__ == "__main__":
     test_image = "./test_image/cat/image_1.jpg"
 
     imagenet_data = get_imagenet_data()[:5]
-    for model in ['alexnet', 'resnet18', 'googlenet', 'vgg16']:
+    for model in ['alexnet']:#['alexnet', 'resnet18', 'googlenet', 'vgg16']:
         for index, data in enumerate(imagenet_data):
             #label = IMAGENET_CLASSES[index]
             inference(f"./svelte-app/public/output/{index}/", data, model)

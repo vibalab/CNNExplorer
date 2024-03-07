@@ -37,7 +37,6 @@ module_start_name_dict = {
         }
 
 def insert_module_info(info, model_name):
-    order_index = 0
     module_index = -1
     layer_index = 0
     for k in info.keys():
@@ -46,11 +45,9 @@ def insert_module_info(info, model_name):
             layer_index = 0 
         else:
             layer_index += 1
-        info[k]['order_index'] = order_index
         info[k]['module_index'] = module_index
         info[k]['layer_index'] = layer_index
         info[k]['module_name'] = module_start_name_dict[model_name][1][module_index]
-        order_index += 1
 
 def hook_fn(m, i, o):
     if m._layer_name in layer_names:
@@ -124,6 +121,28 @@ def ReLU_inplace_to_False(module):
         if hasattr(layer, "inplace"):
             layer.inplace = False
         ReLU_inplace_to_False(layer)
+
+def get_midx(info, key):
+    return info[key]["module_index"]
+
+def get_lidx(info, key):
+    return info[key]["layer_index"]
+
+def get_info(info, midx, lidx):
+    for n in info:
+        if get_midx(info, n) == midx and get_lidx(info, n) == lidx:
+            return n
+
+def get_last(info, midx):
+    # assume ordered
+    for i, n in enumerate(info):
+        if get_midx(info, n) == midx + 1 and get_lidx(info, n) == 0:
+            return list(info.keys())[i-1]
+
+class Pass(nn.Module):
+    def __init__(self):
+        super(Pass, self).__init__()
+        self.__name__ = "Pass"
 
 def inference(log_dir, data_dir, model_name): 
     os.makedirs(log_dir, exist_ok=True)
@@ -199,6 +218,37 @@ def inference(log_dir, data_dir, model_name):
                 print(n, " : ", c, i.shape, o.shape, o.max(), o.min())    
             info[n]["weight"] = layer_weight if layer_weight is not None else None
 
+        # create inception collection layer
+        layers = []
+        for n in info:
+            if info[n]["module_name"] == "inception" and get_lidx(info, n) == 0:
+                name = n.split(".")[0] + ".collection"
+                midx = get_midx(info, n)
+                
+                next_first = get_info(info, midx + 1, 0)
+                
+                layer = {}
+                layer["input"] = info[next_first]["input"]
+                layer["output"] = info[n]["input"]
+                layer["class"] = Pass()
+                layer["weight"] = None
+                layer["module_name"] = "inception"
+                layer["module_index"] = midx
+                layer["layer_index"] = get_lidx(info, get_last(info, midx)) + 1
+
+                pos = list(info.keys()).index(next_first)
+                layers.append([pos, name, layer])               
+                print(f'add inception {midx}, {layer["layer_index"]}')
+
+        info_items = list(info.items())
+        for i, (pos, name, layer) in enumerate(layers):
+            info_items.insert(pos + i, (name, layer))
+        info = dict(info_items)
+
+        # create order index
+        for i, n in enumerate(info):
+            info[n]["order_index"] = i
+
         # get residual info
         for n in info:
             # count residual module size
@@ -244,6 +294,11 @@ def inference(log_dir, data_dir, model_name):
                 k = list(info)[info[n]['order_index'] - 1]
                 input_idx = info[k]['output_index']
                 output_idx = info[k]['output_index']
+            elif c in [Pass]:
+                # get next input index
+                k = list(info)[info[n]['order_index'] + 1]
+                input_idx = info[k]['output_index']
+                output_idx = info[k]['output_index']
             else: # Conv
                 # first 8 or get previous output index 
                 if i.shape[0] > 8:
@@ -256,7 +311,9 @@ def inference(log_dir, data_dir, model_name):
                     # get activation value
                     output_idx = range(8)
                     for ii in range(info[n]['order_index'], len(info)):
-                        if info[list(info)[ii]]["class"] == nn.ReLU:
+                        layer = info[list(info)[ii]]
+                        cls = layer["class"]
+                        if cls == nn.ReLU or (model_name == "googlenet" and cls == nn.BatchNorm2d):
                             activation = info[list(info)[ii]]["output"]
                             avg_activation = np.abs(np.mean(activation, axis=(1,2)))
                             output_idx = (-avg_activation).argsort()[:8]
@@ -298,8 +355,8 @@ def inference(log_dir, data_dir, model_name):
                 print(n, " : ", i.shape, o.shape, layer_weight.shape)
             else:
                 print(n, " : ", i.shape, o.shape)
-            #print(input_idx)
-            #print(output_idx)
+            prev_input_idx = input_idx
+            prev_output_idx = output_idx
 
         # set residual info / apply sampling index
         for cnt, n in enumerate(info):
@@ -307,6 +364,14 @@ def inference(log_dir, data_dir, model_name):
                 prev_output_index = info[list(info)[cnt-1]]["output_index"]
                 info[n]["identity"] = info[n]["identity"][prev_output_index].tolist()
         
+        # remove unneccesary info
+        for k in info:
+            for kk in list(info[k].keys()):
+                if kk in ["weight"]:
+                    del info[k][kk]
+                
+
+
         with open(os.path.join(log_dir, model_name+'_info.json'), "w") as f:
             json.dump(info, f)
     with open(os.path.join(log_dir, 'module_info.json'), "w") as f:
@@ -323,8 +388,8 @@ def get_imagenet_data():
 if __name__ == "__main__":
     test_image = "./test_image/cat/image_1.jpg"
 
-    imagenet_data = get_imagenet_data()[:5]
-    for model in ['alexnet']:#['alexnet', 'resnet18', 'googlenet', 'vgg16']:
+    imagenet_data = get_imagenet_data()[:1]
+    for model in ['googlenet']:#['alexnet', 'resnet18', 'googlenet', 'vgg16']:
         for index, data in enumerate(imagenet_data):
             #label = IMAGENET_CLASSES[index]
             inference(f"./svelte-app/public/output/{index}/", data, model)

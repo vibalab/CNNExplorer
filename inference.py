@@ -9,8 +9,6 @@ import os
 import numpy as np
 from PIL import Image
 
-from convert_weight_to_json import *
-from convert_tensor_to_json import *
 
 layer_inputs = []
 layer_outputs = []

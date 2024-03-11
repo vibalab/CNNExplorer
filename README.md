@@ -64,7 +64,7 @@ python inference.py
    npm run dev
    ```
 
-2. Open your web browser and navigate to `http://localhost:5000`.
+2. Open your web browser and navigate to `http://localhost:8080`.
 
 ## Contributing
 

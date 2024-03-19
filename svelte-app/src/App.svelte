@@ -20,7 +20,7 @@
     const response = await fetch('/imageClasses.json');
     imagenetClasses = await response.json();
     selectedModel = imagenetModels[0];
-
+    selectedClass = "0";
     modelSVG = d3.select('#model-load')
                     .append('svg')
                     .attr('width', 2000)
@@ -70,7 +70,6 @@
 
   async function loadModelView() {
     modelSVG.selectAll('*').remove();
-
     const response = await fetch(`/output/${selectedClass}/${selectedModel}_info.json`);
     modelData = await response.json();
     console.log("Loaded JSON data:", modelData);

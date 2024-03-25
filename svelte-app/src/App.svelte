@@ -6,18 +6,21 @@
   //######################################################################//
   let selectedModel = undefined;
   let selectedClass = undefined;
+  let selectedModule = undefined;
+  let selectedBranch = undefined;
   let moduleLists = undefined;
   let focusedModule = undefined;
   let modelSVG = undefined;
   let imageNum = 8;
 
+  const branches = ['branch1','branch2','branch3','branch4'];
   const imagenetModels = ['alexnet', 'vgg16', 'googlenet', 'resnet18'];
   let imagenetClasses ={}
   onMount(async () => {
     const response = await fetch('/imageClasses.json');
     imagenetClasses = await response.json();
     selectedModel = imagenetModels[0];
-
+    selectedClass = "0";
     modelSVG = d3.select('#model-load')
                     .append('svg')
                     .attr('width', 2000)
@@ -33,7 +36,7 @@
   const moduleStruct = {
     'alexnet':['conv','conv','conv','avgpool','linear'],
     'vgg16': ['conv','conv','conv','conv','conv','avgpool','linear'],
-    'googlenet':['conv','conv','inception','inception','inception','inception','inception','inception','inception','avgpool','linear'],
+    'googlenet':['conv','conv','inception','inception','inception','inception','inception','inception','inception','inception','inception','avgpool','linear'],
     'resnet18':['conv','residual','residual','residual','residual','residual','residual','residual','residual','avgpool','linear']
   };
 
@@ -67,7 +70,6 @@
 
   async function loadModelView() {
     modelSVG.selectAll('*').remove();
-
     const response = await fetch(`/output/${selectedClass}/${selectedModel}_info.json`);
     modelData = await response.json();
     console.log("Loaded JSON data:", modelData);
@@ -149,7 +151,8 @@
         })
         //Click Effect => Call 'showDetailView'
         .on('click', () => { 
-          openDetailView(d, i); });
+          openDetailView(d, i); 
+        });
       });
 
 
@@ -176,7 +179,7 @@
 
   // Open Detail View of Selected Module
   async function openDetailView(selectedModuleName, selectedModuleIndex) {
-    // document.getElementById('detail-view').style.display = 'block';
+    selectedModule = selectedModuleName;
     openModal = true;
     await tick();
 
@@ -205,14 +208,12 @@
     openModal = false;  
     reluActive = false;
     batchNormActive = false;
+    selectedBranch = undefined;
     d3.select('#detail-svg').selectAll("*").remove();
   }
 
   // Call drawModule functions depending on the type of module
   function drawModuleDetail(moduleName, moduleLayers, inputLayer, layerNames) {
-    // const detailSVG = d3.select('#detail-svg');
-    // detailSVG.selectAll('*').remove();
-
     if (moduleName === 'conv'){
         drawConvModuleDetail(moduleLayers);
     }
@@ -226,31 +227,20 @@
       drawResidualModuleDetail(moduleLayers, layerNames);
     }
     else if (moduleName === 'inception'){
-      // TODO(YSKIM)
-      // drawInceptionModuleDetail(moduleLayers);
+      drawInceptionModuleDetail(moduleLayers, layerNames);
     }
+    drawConnections();
   }
 
-  function horizontalConnectionLine(x1,y1,x2,y2,opcaity){
-    // lines = connections.map(conn => {
-    //   const sourceImage = images.find(img => img.id === conn.source);
-    //   const targetImage = images.find(img => img.id === conn.target);
+  function drawConnections(){
 
-    //   const link = d3.linkHorizontal()
-    //                   .source(() => [sourceImage.x + sourceImage.width, sourceImage.y + sourceImage.height / 2])
-    //                   .target(() => [targetImage.x, targetImage.y + targetImage.height / 2]);
-
-    //   return svg.append('path')
-    //           .attr('d', link())
-    //           .attr('fill', 'none')
-    //           .attr('stroke', 'gray')
-    //           .attr('stroke-width', 1)
-    //           .attr('id', `line-${conn.source}-${conn.target}`);
+  }
+  function horizontalConnectionLine(x1, y1, x2, y2, opcaity){
   }
   // Draw Conv Module 
   function drawConvModuleDetail(moduleLayers){
     let visibleLayerIndex = 0;
-    let reluCount = 0;
+    let hiddenLayerCount = 0;
     let x;
     let y;
     moduleLayers.forEach((layer, layerIndex) => {
@@ -259,29 +249,28 @@
         const inputX = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
         const inputY = moduleYPadding + (offsetY);
 
-        drawLayer(layer['input'], visibleLayerIndex, reluCount, inputX, inputY, 'inline', 'input');
+        drawLayer(layer['input'], visibleLayerIndex, hiddenLayerCount, inputX, inputY, 'inline', 'input');
 
         visibleLayerIndex++;
         x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
         y = moduleYPadding + (offsetY);
-        drawLayer(layer['output'], visibleLayerIndex, reluCount, x, y, 'inline', layer['class']);
+        drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['class']);
 
-        drawConnectionLine(inputX,inputY,x,y,0.5)
       }
       //ReLU & BatchNorm Layer
       else if(layer['class'] === 'ReLU' || layer['class'] === 'BatchNorm2d'){
-        reluCount++;
+        hiddenLayerCount++;
         x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
         y = moduleYPadding + (offsetY)
-        drawLayer(layer['output'], visibleLayerIndex, reluCount, x, y, 'none', layer['class']);
+        drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'none', layer['class']);
       }
       //Other Layers (Conv, Pool)
       else if(layer['class'] === 'Conv2d' || layer['class'].includes('Pool')){
         visibleLayerIndex++;
-        reluCount = 0;
+        hiddenLayerCount = 0;
         x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
         y = moduleYPadding + (offsetY);
-        drawLayer(layer['output'], visibleLayerIndex, reluCount, x, y, 'inline', layer['class']);
+        drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['class']);
       }
     });
   }
@@ -308,14 +297,14 @@
   // Draw Linear Module
   function drawLinearModuleDetail(moduleLayers, inputLayer){
     let visibleLayerIndex = 0;
-    let reluCount = 0;
+    let hiddenLayerCount = 0;
     console.log(moduleLayers)
     moduleLayers.forEach((layer, layerIndex) => {
       //Input Layer (Original input, Flatten input)
       if(layerIndex === 0){
         const inputX = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
         const inputY = moduleYPadding + (offsetY);
-        drawLayer(inputLayer, visibleLayerIndex, reluCount, inputX, inputY, 'inline', 'input');
+        drawLayer(inputLayer, visibleLayerIndex, hiddenLayerCount, inputX, inputY, 'inline', 'input');
 
         const x = moduleXPadding + (visibleLayerIndex + 1) * (imageWidth + offsetX);
         const y = moduleYPadding + (offsetY);
@@ -324,24 +313,24 @@
       //Last Layer contains Top-10 prediction labes (output_index) and probability (output)
       if(layerIndex === (moduleLayers.length - 1)){
         //TODO(YSKIM): Print top 10 labels
-        // const x = moduleXPadding + (layerIndex - reluCount + 1) * (imageWidth + offsetX);
+        // const x = moduleXPadding + (layerIndex - hiddenLayerCount + 1) * (imageWidth + offsetX);
         // const y = moduleYPadding + (offsetY);
         //drawPredcition(layer, x, y, 1);
       }
       //ReLU Layer
       else if(layer['class'] === 'ReLU'){
-        reluCount++;
+        hiddenLayerCount++;
         const x = moduleXPadding + (visibleLayerIndex + 1) * (imageWidth + offsetX);
         const y = moduleYPadding + (offsetY);
-        drawLinear(layer['output'], visibleLayerIndex, reluCount, x, y, 'none', layer['class']);
+        drawLinear(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'none', layer['class']);
       }
       //Other Layers (Linear)
       else if(layer['class'] === 'Linear'){
         visibleLayerIndex++;
-        reluCount = 0;
+        hiddenLayerCount = 0;
         const x = moduleXPadding + (visibleLayerIndex + 1) * (imageWidth + offsetX);
         const y = moduleYPadding + (offsetY);
-        drawLinear(layer['output'], visibleLayerIndex, reluCount, x, y, 'inline', layer['class']);
+        drawLinear(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['class']);
       }
     });
   }
@@ -349,13 +338,11 @@
   // Draw Residual Module
   function drawResidualModuleDetail(moduleLayers, layerNames){  
     let visibleLayerIndex = 0;
-    let reluCount = 0;
+    let hiddenLayerCount = 0;
     const residualY = imageHeight;
     console.log(layerNames)
     console.log(moduleLayers)
     moduleLayers.forEach((layer, layerIndex) => {
-      console.log(layerIndex)
-
       //last RelU Layer includes identity
       if(layerIndex === (moduleLayers.length - 1)){   
         const inputX = moduleXPadding;
@@ -363,7 +350,7 @@
         drawLayer(layer['identity'], 0, 0, inputX, inputY, 'inline', 'input');
 
         visibleLayerIndex++;
-        reluCount = 0;
+        hiddenLayerCount = 0;
         const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
         const y = moduleYPadding + (offsetY) + residualY;
         const x1 = inputX + imageWidth/2;
@@ -382,19 +369,19 @@
         // drawLayer(layer['identity'], x1, x2, y1, 1);
       } 
       else if(layer['class'] === 'ReLU' || layer['class'] === 'BatchNorm2d'){
-        reluCount++;
+        hiddenLayerCount++;
         const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
         const y = moduleYPadding + (offsetY) + residualY;
 
         visibleLayerIndex = visibleLayerIndex;
-        drawLayer(layer['output'], visibleLayerIndex, reluCount, x, y, 'none', layer['class']);
+        drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'none', layer['class']);
       }
       else if(layer['class'] === 'Conv2d' || layer['class'].includes('Pool')){
         visibleLayerIndex++;
-        reluCount = 0;
+        hiddenLayerCount = 0;
         const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
         const y = moduleYPadding + (offsetY) + residualY;
-        drawLayer(layer['output'], visibleLayerIndex, reluCount, x, y, 'inline', layer['class']);
+        drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['class']);
       }
     });
 
@@ -449,9 +436,75 @@
   
     }
   }
-  
+
   // Draw Inception Module
-  function drawInceptionModuleDetail(moduleLayers){
+  function drawInceptionModuleDetail(moduleLayers, layerNames){
+    console.log(moduleLayers);
+    console.log(layerNames);
+    // branchLayerNum = getBranchStruct()
+    let branchName = '';
+    let hiddenLayerCount = 0;
+    let visibleLayerIndex = 0;
+    const detailSVG = d3.select('#detail-svg');
+    let brachGroup = undefined;
+
+    moduleLayers.forEach((layer, layerIndex) => {
+      let currentBranch = layerNames[layerIndex].split('.')[1];
+      //Input Layer 
+      if(layerIndex === 0){
+        const x = moduleXPadding + (layerIndex) * (imageWidth + offsetX);
+        const y = moduleYPadding;
+
+        drawLayer(layer['input'], 0, 0, x, y, 'inline', 'input');
+      }
+      //Last Layer
+      if(layerIndex === moduleLayers.length - 1){
+        const x = moduleXPadding + 3 * (imageWidth + offsetX);
+        const y = moduleYPadding;
+        //Draw output layer
+        drawLayer(layer['output'], layerIndex, 0, x, y, 'inline', 'concat');
+      }
+      if(branchName !== currentBranch){
+        hiddenLayerCount = 0;
+        visibleLayerIndex = 0;
+        branchName = currentBranch
+        brachGroup = detailSVG.append('g')
+                              .attr('id', `${branchName}`)
+                              .attr('class', 'branch');
+      }
+      if(layer['class'] === 'ReLU' || layer['class'] === 'BatchNorm2d'){
+        hiddenLayerCount++;
+        const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
+        const y = moduleYPadding;
+        drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'none', layer['class'], branchName);
+      }
+      //Other Layers (Conv, Pool)
+      else if(layer['class'] === 'Conv2d' || layer['class'].includes('Pool')){
+        visibleLayerIndex++;
+        hiddenLayerCount = 0;
+        const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
+        const y = moduleYPadding;
+        drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['class'], branchName);
+      }
+    });
+    selectedBranch = 'branch1';
+  }
+
+  function updateInceptionBranch(){
+    if(typeof selectedBranch !== 'undefined'){
+      console.log('updateInception')
+      //visible인거 전부 hidden으로
+      const previousBranch = d3.selectAll('g.branch')
+                      .style('display', 'none');
+
+      //hidden중에 selectedBranch인거 show하기
+      const currentBranch = d3.select(`g#${selectedBranch}`)
+                      .style('display', 'inline');
+    }
+  }
+
+  $: if(selectedBranch) {
+    updateInceptionBranch();
   }
 
   function drawFlatten3D(layer, visibleLayerIndex, layerIndex, x, y, display = 'inline', layerClass){
@@ -499,7 +552,7 @@
   }
 
   // Draw a layer which is contains IR results (Image or Linear)
-  function drawLayer(layerImages, visibleLayerIndex, layerIndex, layerX, layerY, display, layerClass){
+  function drawLayer(layerImages, visibleLayerIndex, layerIndex, layerX, layerY, display, layerClass, branchName = 'none'){
     // Color Sacle of the layer images
     const [max, min] = getLayerMaxMin3D(layerImages);
     const boundaryValue = Math.max(Math.abs(min), Math.abs(max));
@@ -512,7 +565,7 @@
     layerImages.forEach((image, imageIndex) => {
       ImageX = layerX;
       ImageY = layerY + (imageHeight + offsetY) * (imageIndex);
-      drawImage(image, visibleLayerIndex, layerIndex, imageIndex, colorScale, ImageX, ImageY, display, layerClass);
+      drawImage(image, visibleLayerIndex, layerIndex, imageIndex, colorScale, ImageX, ImageY, display, layerClass, branchName);
     });
 
 
@@ -531,20 +584,24 @@
 
 
   //Draw an Image
-  function drawImage(image, visibleLayerIndex, layerIndex, imageIndex, colorScale, x, y, display, layerClass) {
+  function drawImage(image, visibleLayerIndex, layerIndex, imageIndex, colorScale, x, y, display, layerClass, branchName = 'none') {
     const cellSize = 133 / image.length;
     const numRows = image.length;
     const numCols = image[0].length; 
     const strokeFill = (layerClass === 'ReLU') ? 'black' : (layerClass === '"BatchNorm2d"') ? 'black' : 'gray'
     // const strokeWidth = 1;
     const strokeWidth = (layerClass === 'ReLU') ? 3 : (layerClass === '"BatchNorm2d"') ? 3 : 1;
+    let detailSVG = d3.select('#detail-svg');
     
-    const imageCells = d3.select('#detail-svg')
-    .append('g')
+    if(branchName !== 'none'){
+      detailSVG = d3.select('#detail-svg').select(`g#${branchName}`);
+    }    
+    const imageCells = detailSVG.append('g')
     .attr('class', `IntermediateResult-${layerClass}`)
     .attr('id', `IR-${visibleLayerIndex}-${layerIndex}-${imageIndex}`)
     .attr('transform', `translate(${x}, ${y})`)
     .style('display', display);
+
     
     image.forEach((row, rowIndex) => {
       row.forEach((value, colIndex) => {
@@ -601,7 +658,11 @@
 
 
   function toggleReLU(){
-    d3.select('#detail-svg').selectAll('g.IntermediateResult-ReLU').each(function() {
+    let detailSVG = d3.select('#detail-svg');
+    if(typeof selectedBranch !== 'undefined'){
+      detailSVG = d3.select(`g#${selectedBranch}`);
+    }
+    detailSVG.selectAll('g.IntermediateResult-ReLU').each(function() {
         const id = d3.select(this).attr('id');
         const parts = id.split('-');
         const num = parseInt(parts[1], 10); 
@@ -623,7 +684,11 @@
     });
   }
   function toggleBN(){
-    d3.select('#detail-svg').selectAll('g.IntermediateResult-BatchNorm2d').each(function() {
+    let detailSVG = d3.select('#detail-svg');
+    if(typeof selectedBranch !== 'undefined'){
+      detailSVG = d3.select(`g#${selectedBranch}`);
+    }
+    detailSVG.selectAll('g.IntermediateResult-BatchNorm2d').each(function() {
         const id = d3.select(this).attr('id');
         const parts = id.split('-');
         const num = parseInt(parts[1], 10); 
@@ -657,8 +722,8 @@
 <Row>
   <Col sm="auto" class="d-flex align-items-center">
     <FormGroup class="d-flex align-items-center mb-0">
-      <Label for="modelSelect" class="me-2 mb-0">Model</Label>
-      <Input type="select" bind:value={selectedModel} id="modelSelect" class="me-3">
+      <Label for="model-select" class="me-2 mb-0">Model</Label>
+      <Input type="select" bind:value={selectedModel} id="model-select" class="me-3">
         {#each imagenetModels as modelName}
           <option value={modelName}>{modelName}</option>
         {/each}
@@ -668,8 +733,8 @@
 
   <Col sm="auto" class="d-flex align-items-center">
     <FormGroup class="d-flex align-items-center mb-0">
-      <Label for="classSelect" class="me-2 mb-0">Class</Label>
-      <Input type="select" bind:value={selectedClass} id="classSelect" class="me-3">
+      <Label for="class-select" class="me-2 mb-0">Class</Label>
+      <Input type="select" bind:value={selectedClass} id="class-select" class="me-3">
         {#each Object.entries(imagenetClasses) as [index, className]}
           <option value={index}>{index}: {className}</option>
         {/each}
@@ -686,7 +751,16 @@
 
 <Modal isOpen={openModal} toggle={closeDetailView} size='lg'>
   <ModalHeader toggle={closeDetailView}>
-    <p>Detail View</p>
+    <p>{selectedModel} detail view for {selectedClass} class - {selectedModule} module</p>
+    {#if selectedModule == "inception"}
+      <div class="d-flex">
+        <Input type="select" bind:value={selectedBranch} id="branch-select" class="me-3" style="width: auto;">
+          {#each branches as branch}
+            <option value={branch}>{branch}</option>
+          {/each}
+        </Input>
+      </div>
+    {/if}
   </ModalHeader>
   <ModalBody>
     <div id="svg-container">

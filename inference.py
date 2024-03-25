@@ -3,84 +3,13 @@ import torch.nn as nn
 import torchvision
 import torchvision.models as models
 import torchvision.transforms as transforms
-import json
-import os
+from torch.fx import symbolic_trace
 
+import os
+import json
+import operator
 import numpy as np
 from PIL import Image
-
-
-layer_inputs = []
-layer_outputs = []
-layer_names = []
-layer_classes = []
-
-check_list_class = [nn.Conv2d, nn.BatchNorm2d, nn.ReLU, nn.MaxPool2d, nn.AdaptiveAvgPool2d, nn.Linear]
-
-# conv residual avgpool linear inception
-module_start_name_dict = {
-        "vgg16": [["features.0", "features.5", "features.10", "features.17", "features.24", 
-                  "avgpool", "classifier.0"], 
-                  ["conv","conv","conv","conv","conv","avgpool","linear"]],
-        "alexnet": [["features.0", "features.3", "features.6", "avgpool", "classifier.1"],
-                    ["conv","conv","conv","avgpool","linear"]],
-        "resnet18": [["conv1", "layer1.0.conv1", "layer1.1.conv1", "layer2.0.conv1", "layer2.1.conv1", 
-                   "layer3.0.conv1", "layer3.1.conv1", "layer4.0.conv1", "layer4.1.conv1", "avgpool", "fc"],
-                   ["conv","residual","residual","residual","residual",
-                       "residual","residual","residual","residual","avgpool","linear"]],
-        "googlenet": [["conv1.conv", "conv2.conv", "inception3a.branch1.conv", "inception3b.branch1.conv", 
-                      "inception4a.branch1.conv", "inception4b.branch1.conv", "inception4c.branch1.conv", 
-                      "inception4d.branch1.conv", "inception4e.branch1.conv", "inception5a.branch1.conv",
-                      "inception5b.branch1.conv", "avgpool", "fc"], 
-                      ["conv","conv","inception","inception","inception","inception","inception","inception",
-                      "inception","inception","inception","avgpool","linear"]]
-        }
-
-def insert_module_info(info, model_name):
-    module_index = -1
-    layer_index = 0
-    for k in info.keys():
-        if k in module_start_name_dict[model_name][0]:
-            module_index += 1
-            layer_index = 0 
-        else:
-            layer_index += 1
-        info[k]['module_index'] = module_index
-        info[k]['layer_index'] = layer_index
-        info[k]['module_name'] = module_start_name_dict[model_name][1][module_index]
-
-def hook_fn(m, i, o):
-    if m._layer_name in layer_names:
-        layer_names.append(m._layer_name + "2")
-    else:
-        layer_names.append(m._layer_name)
-    layer_classes.append(m.__class__)
-    layer_inputs.append(i[0].squeeze(0).detach().clone())
-    layer_outputs.append(o[0].detach().clone())
-    print(m._layer_name)
-    #if "relu" in m._layer_name or "bn2" in m._layer_name:
-    #    breakpoint()
-
-def check_layer(name, module):
-    if not hasattr(module, "_modules"):
-        return True
-    if isinstance(module, nn.Sequential):
-        return False
-    for c in check_list_class:
-        if isinstance(module, c):
-             return True
-    return False
-
-hook_handles = []
-def hook_all_layers(net, name=""):
-    split = "" if name == "" else "."
-    for lname, layer in net._modules.items():
-        if not check_layer(lname, layer):
-            hook_all_layers(layer, name=f"{name}{split}{lname}")
-        else:
-            handle = layer.register_forward_hook(hook_fn)
-            hook_handles.append(handle)
-            setattr(layer, "_layer_name" ,f"{name}{split}{lname}")
 
 def load_pretrained_model(model_name, numbering):
     if model_name == "googlenet":
@@ -97,72 +26,238 @@ def load_pretrained_model(model_name, numbering):
 
     weight_file = f"weights/{model_name}_{numbering}_weights.pth"
     model.load_state_dict(torch.load(weight_file))
-    ReLU_inplace_to_False(model)
     model.eval()
-
-    hook_all_layers(model)
-    
     return model
 
-def get_layer_state(state_dict, layer_name):
-    result = dict()
-    for k in state_dict.keys():
-        if k.startswith(layer_name):
-            result[k] = state_dict[k]
-    return result
+def get_layer_from_str(model, string):
+    keys = string.split('.')
+    layer = model
+    for key in keys:
+        layer = layer.__getattr__(key)
+    return layer
+
+def hook_fn(m, i, o):
+    for node in global_graph.nodes:
+        if node.layer == m:
+            node.input = i[0].squeeze(0).detach().clone().cpu().numpy()
+            node.output = o[0].detach().clone().cpu().numpy()
+
+def check_hook(module):
+    if not hasattr(module, "_modules"):
+        return True
+    if isinstance(module, nn.Sequential):
+        return False
+    for node in global_graph.nodes:
+        if node.layer == module:
+            return True
+    return False
+
+
+def hook_all_layers(net, name=""):
+    for lname, layer in net._modules.items():
+        if not check_hook(layer):
+            hook_all_layers(layer)
+        else:
+            layer.handle = layer.register_forward_hook(hook_fn)
 
 def ReLU_inplace_to_False(module):
-    # https://stackoverflow.com/questions/74124725/setting-relu-inplace-to-false
-    #for layer in module._modules.values():
-    #    if isinstance(layer, nn.ReLU):
-    #        layer.inplace = False
-    #    ReLU_inplace_to_False(layer)
     for layer in module._modules.values():
         if hasattr(layer, "inplace"):
             layer.inplace = False
         ReLU_inplace_to_False(layer)
 
-def get_midx(info, key):
-    return info[key]["module_index"]
+layer_dict = {
+        "conv": [nn.Conv2d],
+        "bn": [nn.BatchNorm2d],
+        "relu": [nn.ReLU, nn.functional.relu],
+        "maxpool": [nn.MaxPool2d],
+        "avgpool": [nn.AdaptiveAvgPool2d],
+        "flatten": [nn.Flatten, torch.flatten],
+        "cat": [torch.cat],
+        "linear": [nn.Linear],
+        "add": [operator.add],
+        "ignore": [nn.Dropout]
+        }
 
-def get_lidx(info, key):
-    return info[key]["layer_index"]
+def check_layer(layer):
+    layer_class = type(layer)
+    for k in layer_dict:
+        if layer in layer_dict[k] or layer_class in layer_dict[k]:
+            return k
 
-def get_info(info, midx, lidx):
-    for n in info:
-        if get_midx(info, n) == midx and get_lidx(info, n) == lidx:
-            return n
+def get_prev(target_node, graph):
+    prev_node = None
+    for node in graph.nodes:
+        if node == target_node:
+            return prev_node
+        prev_node = node
 
-def get_last(info, midx):
-    # assume ordered
-    for i, n in enumerate(info):
-        if get_midx(info, n) == midx + 1 and get_lidx(info, n) == 0:
-            return list(info.keys())[i-1]
+def get_next(target_node, graph):
+    prev_node = None
+    for node in graph.nodes:
+        if prev_node == target_node:
+            return node 
+        prev_node = node
+    return None
 
-class Pass(nn.Module):
-    def __init__(self):
-        super(Pass, self).__init__()
-        self.__name__ = "Pass"
+def get_first(nodes, graph):
+    for node in graph.nodes:
+        if node in nodes:
+            return node
 
-def inference(log_dir, data_dir, model_name): 
-    os.makedirs(log_dir, exist_ok=True)
+def get_last(nodes, graph):
+    for node in reversed(graph.nodes):
+        if node in nodes:
+            return node
 
-    model = load_pretrained_model(model_name, 0)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def get_first_arg(target_node, graph):
+    return get_first(target_node.args)
+
+def get_args_meet(target_node, graph):
+    if target_node.layer_type == "cat":
+        arg_pointers = [arg for arg in target_node.args[0]]
+    else:
+        arg_pointers = [arg for arg in target_node.args]
     
-    # need inplace=False for proper hook results
-    #ReLU_inplace_to_False(model)
-    model.to(device)
-    #model.eval()
+    while len(set(arg_pointers)) != 1:
+        last_node = get_last(arg_pointers, graph)
+        for arg in last_node.args:
+            arg_pointers.append(arg)
+        arg_pointers.remove(last_node)
+    return arg_pointers[0]
 
+def get_last_conv_before(target_node, graph):
+    start = False
+    for node in reversed(graph.nodes):
+        if node == target_node:
+            start = True
+        if start and node.layer_type == "conv":
+            return node
+
+def next_relu_or_maxpool_if_exist(target_node, graph):
+    next_node = get_next(target_node, graph)
+    if next_node.layer_type in ["relu", "maxpool"]:
+        return next_node
+    else:
+        return target_node
+
+def next_type(target_node, graph, layer_type):
+    start = False
+    for node in graph.nodes:
+        if node == target_node:
+            start = True
+        if start and node.layer_type == layer_type:
+            return node
+
+def next_flatten_if_exist(target_node, graph):
+    next_node = get_next(target_node, graph)
+    if next_node.layer_type in ["flatten"]:
+        return next_node
+    else:
+        return target_node
+
+def next_until_fc_or_relu(target_node, graph):
+    start = False
+    prev_node = None
+    for node in graph.nodes:
+        if node == target_node:
+            start = True
+        if start and node.layer_type not in ["linear", "relu", "ignore"]:
+            return prev_node
+        prev_node = node
+
+def check_last_linear(target_node, graph):
+    for i, node in enumerate(reversed(graph.nodes)):
+        if i > 2: break
+        if node == target_node and node.layer_type == "linear":
+            return node
+
+def set_module(start_node, end_node, module, graph):
+    start = False
+    for node in graph.nodes:
+        if node == start_node:
+            start = True
+        if start:
+            if "module" in dir(node):
+                print(f"node {node.name} already has module set to {node.module} but trying to assign {module}")
+                fill_ignore(graph)
+                print_graph(graph)
+                quit()
+            if node.layer_type not in ["ignore"]:
+                node.module = module
+        if start and node == end_node:
+            break
+
+def set_input(target_node, graph):
+    prev_node = None
+    for node in graph.nodes:
+        if node == target_node and "output" in dir(prev_node):
+            node.input = prev_node.output 
+        prev_node = node
+
+def set_output(target_node, graph):
+    next_node = None
+    for node in reversed(graph.nodes):
+        if node == target_node:
+            node.output = next_node.input
+        next_node = node
+
+def fill_ignore(graph):
+    for node in graph.nodes:
+        if "module" not in dir(node):
+            node.module = "ignore"
+
+
+def check_module(graph):
+    conv_i = 0
+    residual_i = 0
+    inception_i = 0
+    avgpool_i = 0
+    linear_i = 0
+    for node in graph.nodes:
+        if node.layer_type == "add":
+            start = get_next(get_args_meet(node, graph), graph)
+            end = next_relu_or_maxpool_if_exist(node, graph)
+            set_module(start, end, f"residual_{residual_i}", graph)
+            residual_i += 1
+        if node.layer_type == "cat":
+            start = get_next(get_args_meet(node, graph), graph)
+            end = next_relu_or_maxpool_if_exist(node, graph)
+            set_module(start, end, f"inception_{inception_i}", graph)
+            inception_i += 1
+        if node.layer_type == "avgpool":
+            start = node
+            end = next_flatten_if_exist(node, graph)
+            set_module(start, end, f"avgpool_{avgpool_i}", graph)
+            avgpool_i += 1
+        if node.layer_type == "linear" and "module" not in dir(node):
+            start = node
+            end = next_until_fc_or_relu(node, graph)
+            set_module(start, end, f"linear_{linear_i}", graph)
+            linear_i += 1
+
+    for node in graph.nodes:
+        if node.layer_type == "conv" and "module" not in dir(node): 
+            start = node
+            end = next_type(node, graph, "maxpool")
+            set_module(start, end, f"conv_{conv_i}", graph)
+            conv_i += 1
+
+    fill_ignore(graph)
+
+def print_graph(graph):
+    for node in graph.nodes:
+        print(f"{node.module}\t{node.layer_type}\t{node.layer}\t{node.args}")
+
+def get_transformed(data_dir, log_dir):
+    # save original image to log_dir
+    # and return transformed data
     data_transforms = transforms.Compose([
         transforms.Resize(256),
-        # For identical input, keep 224 instead of 227
-        #transforms.CenterCrop(227 if model_name == "alexnet" else 224),
         transforms.CenterCrop(224),
         transforms.ToTensor()
     ])
-    
+
     data_normalize = transforms.Compose([
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
@@ -180,202 +275,176 @@ def inference(log_dir, data_dir, model_name):
     data = data_normalize(data)
     data = data.unsqueeze(0)
 
-    info = {}
+    return data
 
+def add_missing_inout(graph):
+    for node in global_graph.nodes:
+        if node.layer_type in ["relu"] and "input" not in dir(node):
+            set_input(node, global_graph)
+            # run directly due to F.relu-cat sequence
+            node.output = node.layer(torch.Tensor(node.input))
+
+    for node in global_graph.nodes:
+        if node.layer_type in ["add", "cat"]:
+            set_output(node, global_graph)
+        if node.layer_type in ["flatten"]:
+            set_input(node, global_graph)
+            set_output(node, global_graph)
+
+def main(log_dir, data_dir, model_name):
+    model = load_pretrained_model(model_name, 0)
+    ReLU_inplace_to_False(model)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    symbolic_traced : torch.fx.GraphModule = symbolic_trace(model)
+    global global_graph 
+    global_graph = symbolic_traced.graph
+
+    for node in global_graph.nodes:
+        if node.op not in ["placeholder", "output"] and type(node.target) == str:
+            layer = get_layer_from_str(model, node.target)
+        else:
+            layer = node.target
+        node.layer = layer
+        node.layer_type = check_layer(node.layer)
+
+    check_module(global_graph)
+    #print_graph(global_graph)
+
+    hook_all_layers(model)
+
+    data = get_transformed(data_dir, log_dir)
+    model.to(device)
     with torch.no_grad():
         data = data.to(device)
-        layer_inputs.clear()
-        layer_outputs.clear()
         outputs = model(data)
 
-        #for h in hook_handles:
-        #    h.remove()
+    add_missing_inout(global_graph)
 
-        state_dict = model.state_dict()
-        prev_input_idx = None
-        prev_output_idx = None
-        prev_bn_output = None
-        residual_module_input = None
+    for node in global_graph.nodes:
+        print(node.name, end="\t")
+        if "input" in dir(node): print(node.input.shape, end="\t")
+        if "output" in dir(node): print(node.output.shape, end="")
+        print()
 
-        for n in layer_names:
-            info[n] = {}
-        insert_module_info(info, model_name)
+    
+    # DO INDEXING
+    for node in global_graph.nodes:
+        if node.op in ["placeholder", "output"] or node.module in ["ignore"]: continue
 
-        # create info
-        for cnt, (i, o, n, c) in enumerate(zip(layer_inputs, layer_outputs, layer_names, layer_classes)):
-            i = i.cpu().numpy()
-            o = o.cpu().numpy()
-            info[n]["input"] = i
-            info[n]["output"] = o
-            info[n]["class"] = c
-           
-            layer_state = get_layer_state(state_dict, n)
-            layer_weight = None
-            if n+".weight" in layer_state:
-                layer_weight = layer_state[n+".weight"].cpu().numpy()
-                print(n, " : ", c, i.shape, o.shape, layer_weight.shape, o.max(), o.min())
-            else:
-                print(n, " : ", c, i.shape, o.shape, o.max(), o.min())    
-            info[n]["weight"] = layer_weight if layer_weight is not None else None
-
-        # create inception collection layer
-        layers = []
-        for n in info:
-            if info[n]["module_name"] == "inception" and get_lidx(info, n) == 0:
-                name = n.split(".")[0] + ".collection"
-                midx = get_midx(info, n)
+        if node.layer_type == "linear":
+            if node.input.shape[0] > 1024:
+                node.input_index = range(1024)
+            # last layer : top 10 
+            if check_last_linear(node, global_graph):
+                node.output_index = (-node.output).argsort()[:10]
+                y = np.exp(node.output - np.max(node.output))
+                softmax_output = y / np.sum(np.exp(node.output)) * np.exp(np.max(node.output))
+                node.softmax_output = softmax_output[node.output_index].tolist()
+            elif node.output.shape[0] > 1024:
+                node.output_index = range(1024)
+        elif node.layer_type in ["relu", "bn", "maxpool", "avgpool"]:
+            node.input_index = node.args[0].output_index
+            node.output_index = node.input_index
+        elif node.layer_type in ["add"]:
+            node.output_index = node.args[0].output_index
+        elif node.layer_type in ["cat"]:
+            node.output_index = node.args[0][0].output_index
+        elif node.layer_type in ["ignore"]:
+            pass
+        elif node.layer_type in ["conv"]:
+            # input index: first 8 or get previous output index
+            if node.input.shape[0] > 8:
+                prev_node = node.args[0]
+                if "output_index" not in dir(prev_node):
+                    node.input_index = range(8)
+                else:
+                    node.input_index = prev_node.output_index
+            # output index: sampling method 
+            if node.output.shape[0] > 8:
+                node.output_index = range(8)
                 
-                next_first = get_info(info, midx + 1, 0)
-                
-                layer = {}
-                layer["input"] = info[next_first]["input"]
-                layer["output"] = info[n]["input"]
-                layer["class"] = Pass()
-                layer["weight"] = None
-                layer["module_name"] = "inception"
-                layer["module_index"] = midx
-                layer["layer_index"] = get_lidx(info, get_last(info, midx)) + 1
+                # activation layer type
+                if model_name == "googlenet":
+                    activation_node = next_type(node, global_graph, "bn")
+                else:
+                    activation_node = next_type(node, global_graph, "relu")
+                if activation_node:
+                    activation = activation_node.output
+                    avg_activation = np.abs(np.mean(activation, axis=(1, 2)))
+                    node.output_index = (-avg_activation).argsort()[:8]
 
-                pos = list(info.keys()).index(next_first)
-                layers.append([pos, name, layer])               
-                print(f'add inception {midx}, {layer["layer_index"]}')
+    # apply index
+    for node in global_graph.nodes:
+        if "input" in dir(node) and "input_index" in dir(node):
+            node.input_index = np.array(node.input_index)
+            node.input = node.input[node.input_index].tolist()
+            node.input_index = node.input_index.tolist()
+        if "output" in dir(node) and "output_index" in dir(node):
+            node.output_index = np.array(node.output_index)
+            node.output = node.output[node.output_index].tolist()
+            node.output_index = node.output_index.tolist()
 
-        info_items = list(info.items())
-        for i, (pos, name, layer) in enumerate(layers):
-            info_items.insert(pos + i, (name, layer))
-        info = dict(info_items)
+    # layer metadata
+    for node in global_graph.nodes:
+        if node.layer_type in ["conv", "bn", "maxpool", "avgpool"]:
+            metadata = {k:node.layer.__dict__[k] for k in node.layer.__dict__ \
+                if k not in ["_parameters", "_modules"] and "hook" not in k \
+                and "handle" not in k and "buffer" not in k}
+            node.metadata = metadata
 
-        # create order index
-        for i, n in enumerate(info):
-            info[n]["order_index"] = i
+    order_i = 0
+    module_i = -1
+    layer_i = 0
+    prev_module = None
+    module_list = []
+    info = {}
+    for node in global_graph.nodes:
+        if node.op in ["placeholder", "output"] or node.module in ["ignore"]: continue
 
-        # get residual info
-        for n in info:
-            # count residual module size
-            if info[n]["module_name"] == "residual":
-                midx = info[n]["module_index"]
-                lidx = info[n]["layer_index"]
-                msize = sum([info[k]["module_index"] == midx for k in info])
-                # if last layer set first layer input or downsample output as identity
-                ds_layer_name = n[:-6]+".downsample.1"
-                if lidx + 1 == msize:
-                    ds_layer_name = n[:-6]+".downsample.1"
-                    if ds_layer_name in info:
-                        identity = [info[ds_layer_name]["output"]]
-                    else:
-                        identity = [info[k]["input"] for k in info if info[k]["module_index"] == midx and info[k]["layer_index"] == 0]
-                    info[n]["identity"] = identity[0]
-                    print(n, info[n]["module_index"], identity[0].shape)
+        if prev_module != node.module:
+            module_list.append(node.module.split("_")[0])
+            module_i += 1
+            layer_i = 0
 
-        # set sampling index
-        for n in info:
-            input_idx = None
-            output_idx = None
-            softmax_output = None
-            
-            i = info[n]["input"]
-            o = info[n]["output"]
-            c = info[n]["class"]
-            
-            if c == nn.Linear:
-                # Linear: first 1024
-                # Last Linear: top 10 cls
-                if i.shape[0] > 1024:
-                    input_idx = range(1024)
-                if n == layer_names[-1]:
-                    output_idx = (-o).argsort()[:10]
-                    y = np.exp(o - np.max(o))
-                    softmax_output = y / np.sum(np.exp(o)) * np.exp(np.max(o))
-                    softmax_output = softmax_output[output_idx]
-                elif o.shape[0] > 1024:
-                    output_idx = range(1024)
-            elif c in [nn.ReLU, nn.BatchNorm2d, nn.MaxPool2d, nn.AdaptiveAvgPool2d]:
-                # get previous output index
-                k = list(info)[info[n]['order_index'] - 1]
-                input_idx = info[k]['output_index']
-                output_idx = info[k]['output_index']
-            elif c in [Pass]:
-                # get next input index
-                k = list(info)[info[n]['order_index'] + 1]
-                input_idx = info[k]['output_index']
-                output_idx = info[k]['output_index']
-            else: # Conv
-                # first 8 or get previous output index 
-                if i.shape[0] > 8:
-                    if prev_output_idx is not None:
-                        input_idx = prev_output_idx
-                    else:
-                        input_idx = range(8)
-                # set based on sampling method 
-                if o.shape[0] > 8:
-                    # get activation value
-                    output_idx = range(8)
-                    for ii in range(info[n]['order_index'], len(info)):
-                        layer = info[list(info)[ii]]
-                        cls = layer["class"]
-                        if cls == nn.ReLU or (model_name == "googlenet" and cls == nn.BatchNorm2d):
-                            activation = info[list(info)[ii]]["output"]
-                            avg_activation = np.abs(np.mean(activation, axis=(1,2)))
-                            output_idx = (-avg_activation).argsort()[:8]
-                            break
+        info[node.name] = {
+                'order_index': order_i,
+                'module_name': node.module.split("_")[0], 
+                'module_index': module_i, 
+                'layer_index': layer_i,
+                'layer_type': node.layer_type,
+                'arguments': 0, #node.layer.argument...,
+                'class': str(type(node))
+                }
+        keys = ["input", "output", "input_index", "output_index", "softmax_output", "metadata"]
+        for k in keys:
+            if k in dir(node):
+                info[node.name][k] = node.__getattribute__(k)
 
-            layer_weight = info[n]['weight']
-            if layer_weight is None:
-                pass
-            elif c == nn.Conv2d or c == nn.Linear:
-                if input_idx is None:
-                    input_idx = range(layer_weight.shape[1])
-                if output_idx is None:
-                    output_idx = range(layer_weight.shape[0])
-                layer_weight = layer_weight[output_idx][:,input_idx]
-            elif c == nn.BatchNorm2d:
-                if input_idx is None:
-                    input_idx = range(layer_weight.shape[0])
-                layer_weight = layer_weight[input_idx]
-            else:
-                print("Need weight dimension reduction for layer: ", n)
-                quit()
-            
-            input_idx = np.array(input_idx)
-            output_idx = np.array(output_idx)
-            i = i[input_idx]
-            o = o[output_idx]
-            print(input_idx)
-            print(output_idx)
-            info[n]['class'] = info[n]['class'].__name__
-            info[n]['input'] = i.tolist()
-            info[n]['output'] = o.tolist()
-            info[n]['input_index'] = input_idx.tolist()
-            info[n]['output_index'] = output_idx.tolist()
-            if n == layer_names[-1]:
-                info[n]['softmax_output'] = softmax_output.tolist()
+        if node.layer_type == "add":
+            info[node.name]['identity'] = node.args[0].output
         
-            if layer_weight is not None:
-                info[n]['weight'] = layer_weight.tolist()
-                print(n, " : ", i.shape, o.shape, layer_weight.shape)
-            else:
-                print(n, " : ", i.shape, o.shape)
-            prev_input_idx = input_idx
-            prev_output_idx = output_idx
+        order_i += 1
+        layer_i += 1
+        prev_module = node.module
 
-        # set residual info / apply sampling index
-        for cnt, n in enumerate(info):
-            if "identity" in info[n]:
-                prev_output_index = info[list(info)[cnt-1]]["output_index"]
-                info[n]["identity"] = info[n]["identity"][prev_output_index].tolist()
-        
-        # remove unneccesary info
-        for k in info:
-            for kk in list(info[k].keys()):
-                if kk in ["weight"]:
-                    del info[k][kk]
-                
+    for k in info:
+        print(f"{k}, {info[k]['order_index']}, {info[k]['layer_type']} ,{info[k]['module_name']} , {info[k]['module_index']} , {info[k]['layer_index']} ")
+        if 'input_index' in info[k]: print(f"input index: {info[k]['input_index']}")
+        if 'output_index' in info[k]: print(f"output index: {info[k]['output_index']}")
 
+    info['structure'] = module_list
 
-        with open(os.path.join(log_dir, model_name+'_info.json'), "w") as f:
-            json.dump(info, f)
-    with open(os.path.join(log_dir, 'module_info.json'), "w") as f:
-        json.dump(module_start_name_dict, f)
+    for k in info:
+        for kk in info[k]:
+            if isinstance(info[k], dict) and isinstance(info[k][kk], np.ndarray):
+                info[k][kk] = info[k][kk].tolist()
+
+    with open(os.path.join(log_dir, model_name+'_info.json'), "w") as f:
+        json.dump(info, f)
+    
+    print()
 
 def get_imagenet_data():
     images = []
@@ -389,11 +458,12 @@ if __name__ == "__main__":
     test_image = "./test_image/cat/image_1.jpg"
 
     imagenet_data = get_imagenet_data()[:1]
-    for model in ['googlenet']:#['alexnet', 'resnet18', 'googlenet', 'vgg16']:
+    for model in ['alexnet', 'resnet18', 'googlenet', 'vgg16']:
         for index, data in enumerate(imagenet_data):
             #label = IMAGENET_CLASSES[index]
-            inference(f"./svelte-app/public/output/{index}/", data, model)
+            main(f"./svelte-app/public/output/{index}/", data, model)
             layer_inputs = []
             layer_outputs = []
             layer_names = []
             layer_classes = []
+

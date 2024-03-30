@@ -8,10 +8,11 @@
   let selectedClass = undefined;
   let selectedModule = undefined;
   let selectedBranch = undefined;
-  let moduleLists = undefined;
-  let focusedModule = undefined;
+  let moduleLayerDepth = undefined;
   let modelSVG = undefined;
   let imageNum = 8;
+  let pathData = [];
+  let link = undefined;
 
   const branches = ['branch1','branch2','branch3','branch4'];
   const imagenetModels = ['alexnet', 'vgg16', 'googlenet', 'resnet18'];
@@ -25,7 +26,9 @@
                     .append('svg')
                     .attr('width', 2000)
                     .attr('height', 1000);  
-
+    link = d3.linkHorizontal()
+      .x(d=>d[0])
+      .y(d=>d[1]);
   });
 
   let modelData = undefined;
@@ -40,7 +43,6 @@
     'resnet18':['conv','residual','residual','residual','residual','residual','residual','residual','residual','avgpool','linear']
   };
 
-  let moduleNum = undefined;
   let openModal = false;
   let batchNormActive = false;
   let reluActive = false;
@@ -48,9 +50,8 @@
   const imageWidth = 133;
   const moduleXPadding = 30;
   const moduleYPadding = 30;
-  const offsetX = 50;
+  const offsetX = 100;
   const offsetY = 30;
-  const offsetReLU = 5;
 
   function updateSVGSize(newWidth, newHeight) {
     d3.select('#detail-svg')
@@ -209,6 +210,7 @@
     reluActive = false;
     batchNormActive = false;
     selectedBranch = undefined;
+    pathData = [];
     d3.select('#detail-svg').selectAll("*").remove();
   }
 
@@ -229,13 +231,87 @@
     else if (moduleName === 'inception'){
       drawInceptionModuleDetail(moduleLayers, layerNames);
     }
-    drawConnections();
+    drawLayerConnections();
   }
 
-  function drawConnections(){
+  function drawLayerConnections(){
+    console.log(`depth is ${moduleLayerDepth}`);
+    for(let cursor = moduleLayerDepth; cursor > 0; cursor--){
+      const currLayer = d3.select('#detail-svg').selectAll('g').filter(function() { 
+        if(!this.getAttribute('class').includes('IntermediateResult')){
+          return false;
+        }
+        const isCurrentLayerDepth = this.getAttribute('id').split('-')[1] === String(cursor);
+        const isDisplayInline = window.getComputedStyle(this).display === 'inline';
+        //In case of inception --> check isInlineBranch
+        if(this.getAttribute('class').includes('branch')){
+          // const isInlineBranch = this.className.baseVal.includes(selectedBranch);
+          const isInlineBranch = this.getAttribute('class').includes(selectedBranch);
+          return isDisplayInline && isInlineBranch && isCurrentLayerDepth;
+        }
+        return isDisplayInline && isCurrentLayerDepth;
+    });
 
+    const prevLayer = d3.select('#detail-svg').selectAll('g').filter(function() { 
+      if(!this.getAttribute('class').includes('IntermediateResult')){
+          return false;
+      }
+      const isCurrentLayerDepth = this.getAttribute('id').split('-')[1] === String(cursor - 1);
+      const isDisplayInline = window.getComputedStyle(this).display === 'inline';
+      //In case of inception --> check isInlineBranch
+      if(this.getAttribute('class').includes('branch')){
+        // const isInlineBranch = this.className.baseVal.includes(selectedBranch);
+        const isInlineBranch = this.getAttribute('class').includes(selectedBranch);
+        return isDisplayInline && isInlineBranch && isCurrentLayerDepth;
+      }
+      return isDisplayInline && isCurrentLayerDepth;
+    });
+
+      currLayer.each(function() {
+        const dstIR = d3.select(this);
+        const layerClass = dstIR.attr('class');
+        const dstImageIndex = dstIR.attr('id').split('-')[3];
+
+        if (layerClass.includes('IntermediateResult') && layerClass.includes('Conv2d')) {
+          prevLayer.each(function() {
+            const srcIR = d3.select(this);
+            const srcImageIndex = srcIR.attr('id').split('-')[3];
+            addHorizontalConnection(srcIR, dstIR, cursor, srcImageIndex ,dstImageIndex);
+          });
+        }
+        else if(layerClass === 'IntermediateResult-Concat'|| layerClass === 'IntermediateResult-Residual' || layerClass.includes('Pool')){  //ToDo(YSKIM): residual -> Add 
+          const srcIR = prevLayer.filter(function() {
+            return d3.select(this).attr('id').split('-')[3] === dstImageIndex;
+          })
+          addHorizontalConnection(srcIR, dstIR, cursor, dstImageIndex ,dstImageIndex);
+        }
+      });
+    }
+    pathData.forEach(path => {
+      d3.select('#detail-svg').append('path')
+          .attr('d', link({
+            source: path.source,
+            target: path.target
+          }))
+          .attr('fill', 'none')
+          .attr('stroke', 'gray')
+          .attr('stroke-width', 1)
+          .attr('id', path.id)
+          .style('stroke-opacity', 0.5);
+    });
   }
-  function horizontalConnectionLine(x1, y1, x2, y2, opcaity){
+
+  function addHorizontalConnection(srcImage, dstImage, dstLayerIndex, srcImageIndex, dstImageIndex){
+    const srcTranslate = srcImage.attr('transform').match(/translate\(([^)]+)\)/);
+    let srcCoordinates = srcTranslate[1].split(',').map(function(d) { return parseFloat(d); });
+    srcCoordinates[0] = srcCoordinates[0] + imageWidth;
+    srcCoordinates[1] = srcCoordinates[1] + imageHeight/2;
+
+    const dstTranslate = dstImage.attr('transform').match(/translate\(([^)]+)\)/);
+    let dstCoordinates = dstTranslate[1].split(',').map(function(d) { return parseFloat(d); });
+    dstCoordinates[1] = dstCoordinates[1] + imageHeight/2;
+
+    pathData.push({ id:`edge-${dstLayerIndex}-${srcImageIndex}-${dstImageIndex}`, source: srcCoordinates, target: dstCoordinates}) 
   }
   // Draw Conv Module 
   function drawConvModuleDetail(moduleLayers){
@@ -273,6 +349,7 @@
         drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['class']);
       }
     });
+    moduleLayerDepth = visibleLayerIndex;
   }
 
   // Draw Avgpool Module
@@ -290,7 +367,8 @@
       // Other Layers (Pool)
       const x = moduleXPadding + (layerIndex + 1) * (imageWidth + offsetX);
       const y = moduleYPadding + (offsetY)
-      drawLayer(layer['output'], layerIndex, layerIndex, x, y, 'inline', layer['class']);
+      drawLayer(layer['output'], layerIndex + 1, layerIndex, x, y, 'inline', layer['class']);
+      moduleLayerDepth = layerIndex + 1;
     });
   }
   
@@ -333,6 +411,7 @@
         drawLinear(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['class']);
       }
     });
+    moduleLayerDepth = visibleLayerIndex;
   }
 
   // Draw Residual Module
@@ -356,7 +435,7 @@
         const x1 = inputX + imageWidth/2;
         const x2 = x + imageWidth/2;
         drawShortcut(x1, x2, y, 1);
-        drawLayer(layer['input'], visibleLayerIndex, 0, x, y, 'inline', 'residual');
+        drawLayer(layer['input'], visibleLayerIndex, 0, x, y, 'inline', 'Residual');
         drawLayer(layer['output'], visibleLayerIndex, 1, x, y, 'none', layer['class']);
       }
       else if(layerNames[layerIndex].includes('downsample')){
@@ -384,6 +463,7 @@
         drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['class']);
       }
     });
+    moduleLayerDepth = visibleLayerIndex;
 
     function drawShortcut(x1, x2, y0, z){
       const detailSVG = d3.select('#detail-svg');
@@ -399,22 +479,23 @@
       let y2;
       for(let i = 0; i < imageNum; i++){
         const shortcutGroup = detailSVG.append('g')
-                              .attr('id', `shortcutgroup-${i}`);
+                              .attr('class','shortcut')
+                              .attr('id', `edge-${i}`);
         y1 = y0 + i * (imageHeight + offsetY);
         y2 = i < imageNum / 2 ? y0 - (imageHeight + offsetY) : y0 + (imageNum + 1) * (imageHeight + offsetY) + imageHeight;
 
-        const pathData1 = [
+        const pathDataBeforeLine = [
           [x1, y1],
           [(x1 + x2) / 2, y2]
         ];
 
-        const pathData2 = [
+        const pathDataAfterLine = [
           [(x1 + x2) / 2, y2],
           [x2, y1]
         ];
           
         shortcutGroup.append('path')
-          .attr('d', stepBeforeLine(pathData1))
+          .attr('d', stepBeforeLine(pathDataBeforeLine))
           .attr('fill', 'none')
           .attr('stroke', 'black')
           .attr('class',`line-${i}`)
@@ -422,7 +503,7 @@
           .style('stroke-opacity', 0);
           
         shortcutGroup.append('path')
-          .attr('d', stepAfterLine(pathData2))
+          .attr('d', stepAfterLine(pathDataAfterLine))
           .attr('fill', 'none')
           .attr('stroke', 'black')
           .attr('class',`line-${i}`)
@@ -455,14 +536,15 @@
         const x = moduleXPadding + (layerIndex) * (imageWidth + offsetX);
         const y = moduleYPadding;
 
-        drawLayer(layer['input'], 0, 0, x, y, 'inline', 'input');
+        drawLayer(layer['input'], visibleLayerIndex, 0, x, y, 'inline', 'Input');
       }
       //Last Layer
       if(layerIndex === moduleLayers.length - 1){
         const x = moduleXPadding + 3 * (imageWidth + offsetX);
         const y = moduleYPadding;
         //Draw output layer
-        drawLayer(layer['output'], layerIndex, 0, x, y, 'inline', 'concat');
+        moduleLayerDepth = 2;
+        drawLayer(layer['output'], moduleLayerDepth, 0, x, y, 'inline', 'Concat'); 
       }
       if(branchName !== currentBranch){
         hiddenLayerCount = 0;
@@ -494,12 +576,29 @@
     if(typeof selectedBranch !== 'undefined'){
       console.log('updateInception')
       //visible인거 전부 hidden으로
-      const previousBranch = d3.selectAll('g.branch')
+      d3.selectAll('g.branch')
                       .style('display', 'none');
 
       //hidden중에 selectedBranch인거 show하기
-      const currentBranch = d3.select(`g#${selectedBranch}`)
+      d3.select(`g#${selectedBranch}`)
                       .style('display', 'inline');
+
+      const numLayerCurrentBranch = d3.select(`g#${selectedBranch}`)
+                                    .selectAll('g')
+                                    .filter(function() {return window.getComputedStyle(this).display === 'inline';})
+                                    .size() / 8;
+
+      d3.select('#detail-svg').selectAll('g.IntermediateResult-Concat').each(function(){
+        const currentImageIndex = d3.select(this).attr('id').split('-')[3];
+        const newImageIndex = `IR-${numLayerCurrentBranch + 1}-0-${currentImageIndex}`
+        d3.select(this).attr('id', newImageIndex);
+      });
+
+      moduleLayerDepth = numLayerCurrentBranch + 1;
+
+      d3.select('#detail-svg').selectAll('path').remove();
+      pathData = [];
+      drawLayerConnections();
     }
   }
 
@@ -591,13 +690,14 @@
     const strokeFill = (layerClass === 'ReLU') ? 'black' : (layerClass === '"BatchNorm2d"') ? 'black' : 'gray'
     // const strokeWidth = 1;
     const strokeWidth = (layerClass === 'ReLU') ? 3 : (layerClass === '"BatchNorm2d"') ? 3 : 1;
+    const className = (branchName === 'none') ? `IntermediateResult-${layerClass}`:  `IntermediateResult-${branchName}-${layerClass}`
     let detailSVG = d3.select('#detail-svg');
     
     if(branchName !== 'none'){
       detailSVG = d3.select('#detail-svg').select(`g#${branchName}`);
     }    
     const imageCells = detailSVG.append('g')
-    .attr('class', `IntermediateResult-${layerClass}`)
+    .attr('class', className)
     .attr('id', `IR-${visibleLayerIndex}-${layerIndex}-${imageIndex}`)
     .attr('transform', `translate(${x}, ${y})`)
     .style('display', display);
@@ -685,13 +785,14 @@
   }
   function toggleBN(){
     let detailSVG = d3.select('#detail-svg');
+    let bnClassSelector = 'g.IntermediateResult-BatchNorm2d';
     if(typeof selectedBranch !== 'undefined'){
       detailSVG = d3.select(`g#${selectedBranch}`);
+      bnClassSelector = `g.IntermediateResult-${selectedBranch}-BatchNorm2d`;
     }
-    detailSVG.selectAll('g.IntermediateResult-BatchNorm2d').each(function() {
+    detailSVG.selectAll(bnClassSelector).each(function() {
         const id = d3.select(this).attr('id');
         const parts = id.split('-');
-        const num = parseInt(parts[1], 10); 
         const convLayerId = `IR-${parts[1]}-0-${parts[3]}`;
         const convLayer = d3.select(`#${convLayerId}`);
 

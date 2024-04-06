@@ -36,12 +36,12 @@
   const moduleYMargin = 200;
   const moduelWidth = 100;
   const moduleHeight = 400;
-  const moduleStruct = {
-    'alexnet':['conv','conv','conv','avgpool','linear'],
-    'vgg16': ['conv','conv','conv','conv','conv','avgpool','linear'],
-    'googlenet':['conv','conv','inception','inception','inception','inception','inception','inception','inception','inception','inception','avgpool','linear'],
-    'resnet18':['conv','residual','residual','residual','residual','residual','residual','residual','residual','avgpool','linear']
-  };
+  // const \ = {
+  //   'alexnet':['conv','conv','conv','avgpool','linear'],
+  //   'vgg16': ['conv','conv','conv','conv','conv','avgpool','linear'],
+  //   'googlenet':['conv','conv','inception','inception','inception','inception','inception','inception','inception','inception','inception','avgpool','linear'],
+  //   'resnet18':['conv','residual','residual','residual','residual','residual','residual','residual','residual','avgpool','linear']
+  // };
 
   let openModal = false;
   let batchNormActive = false;
@@ -78,10 +78,29 @@
     // JSON 객체의 모든 키를 출력
     console.log("Keys in JSON:", Object.keys(modelData));
 
+    let moduleStruct = [];
+    for (const key in modelData) {
+      let layerInfo = modelData[key]
+      let moduleIdx = layerInfo['module_index']
+      let moduleName = layerInfo['module_name']
+      let layerName = layerInfo['class']
+
+      if (moduleStruct[moduleIdx] === undefined){ //
+        moduleStruct.push({
+          'name': moduleName,
+          'layers': []
+        });
+      }
+
+      moduleStruct[moduleIdx]['layers'].push({
+        'name': layerName
+      }); 
+    }
+
     const moduleGroup = modelSVG.append('g').attr('class', 'module-group');
 
     const modules = moduleGroup.selectAll('g')
-      .data(moduleStruct[selectedModel])
+      .data(moduleStruct)
       .enter()
       .append('g')
       .attr('class', 'module')
@@ -91,7 +110,7 @@
     modules.append('rect')
       .attr('width', moduelWidth)
       .attr('height', moduleHeight)
-      .style('fill', (d) => moduleFills(d))
+      .style('fill', (d) => moduleFills(d['name']))
       .style('stroke', 'gray')
       .style('stroke-width', 0);
 
@@ -101,7 +120,7 @@
       .attr('y', moduleHeight / 2)
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'middle')
-      .text((d) => d)
+      .text((d) => d['name'])
       .style('fill', 'black');
 
       const expandedWidth = moduelWidth * 2; // 확장할 너비
@@ -152,7 +171,7 @@
         })
         //Click Effect => Call 'showDetailView'
         .on('click', () => { 
-          openDetailView(d, i); 
+          openDetailView(d['name'], i); 
         });
       });
 

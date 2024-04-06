@@ -36,12 +36,6 @@
   const moduleYMargin = 200;
   const moduelWidth = 100;
   const moduleHeight = 400;
-  // const \ = {
-  //   'alexnet':['conv','conv','conv','avgpool','linear'],
-  //   'vgg16': ['conv','conv','conv','conv','conv','avgpool','linear'],
-  //   'googlenet':['conv','conv','inception','inception','inception','inception','inception','inception','inception','inception','inception','avgpool','linear'],
-  //   'resnet18':['conv','residual','residual','residual','residual','residual','residual','residual','residual','avgpool','linear']
-  // };
 
   let openModal = false;
   let batchNormActive = false;

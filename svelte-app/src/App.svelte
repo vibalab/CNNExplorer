@@ -34,7 +34,7 @@
   let modelData = undefined;
   const moduleXMargin = 20;
   const moduleYMargin = 200;
-  const moduelWidth = 100;
+  const moduleWidth = 100;
   const moduleHeight = 400;
   const moduleStruct = {
     'alexnet':['conv','conv','conv','avgpool','linear'],
@@ -85,11 +85,11 @@
       .enter()
       .append('g')
       .attr('class', 'module')
-      .attr('transform', (d, i) => `translate(${i * (moduelWidth + moduleXMargin)}, ${moduleYMargin})`);
+      .attr('transform', (d, i) => `translate(${i * (moduleWidth + moduleXMargin)}, ${moduleYMargin})`);
 
     // 각 하위 g 요소 안에 rect 추가
     modules.append('rect')
-      .attr('width', moduelWidth)
+      .attr('width', moduleWidth)
       .attr('height', moduleHeight)
       .style('fill', (d) => moduleFills(d))
       .style('stroke', 'gray')
@@ -97,15 +97,15 @@
 
     // 각 하위 g 요소 안에 text 추가
     modules.append('text')
-      .attr('x', moduelWidth / 2)
+      .attr('x', moduleWidth / 2)
       .attr('y', moduleHeight / 2)
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'middle')
       .text((d) => d)
       .style('fill', 'black');
 
-      const expandedWidth = moduelWidth * 2; // 확장할 너비
-      const shiftDistance = expandedWidth - moduelWidth; // 확장으로 인해 밀어낼 거리
+      const expandedWidth = moduleWidth * 2; // 확장할 너비
+      const shiftDistance = expandedWidth - moduleWidth; // 확장으로 인해 밀어낼 거리
 
       modules.each(function(d, i) {
         const group = d3.select(this);
@@ -123,7 +123,7 @@
             modules.filter((_, j) => j > i)
               .transition()
               .duration(500)
-              .attr('transform', (d, j) => `translate(${((j + i + 1) * (moduelWidth + moduleXMargin)) + shiftDistance}, ${moduleYMargin})`);
+              .attr('transform', (d, j) => `translate(${((j + i + 1) * (moduleWidth + moduleXMargin)) + shiftDistance}, ${moduleYMargin})`);
 
             // Hide text
             group.select('text')
@@ -136,13 +136,13 @@
             d3.select(this)
               .transition()
               .duration(500)
-              .attr('width', moduelWidth)
+              .attr('width', moduleWidth)
               .style('stroke-width', 1);
 
             // 모든 rect를 원래 위치로 복원
             modules.transition()
               .duration(500)
-              .attr('transform', (d, j) => `translate(${j * (moduelWidth + moduleXMargin)}, ${moduleYMargin})`);
+              .attr('transform', (d, j) => `translate(${j * (moduleWidth + moduleXMargin)}, ${moduleYMargin})`);
 
             // 모든 text를 다시 표시
             modules.select('text')

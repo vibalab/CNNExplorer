@@ -122,10 +122,8 @@
       .text((d) => d['name'])
       .style('fill', 'black');
 
-
       modules.each(function(d, i) {
         const group = d3.select(this);
-
 
         group.select('rect')
           .on('mouseover', function() {

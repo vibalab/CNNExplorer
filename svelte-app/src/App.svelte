@@ -37,6 +37,11 @@
   const moduleWidth = 100;
   const moduleHeight = 400;
 
+  const layerWidth = moduleWidth * 0.8
+  const layerHeight = moduleHeight * 0.8
+  const layerXOffset = (moduleWidth - layerWidth) / 2
+  const layerYOffset = (moduleHeight - layerHeight) / 2
+
   let openModal = false;
   let batchNormActive = false;
   let reluActive = false;
@@ -117,14 +122,14 @@
       .text((d) => d['name'])
       .style('fill', 'black');
 
-      const expandedWidth = moduleWidth * 2; // 확장할 너비
-      const shiftDistance = expandedWidth - moduleWidth; // 확장으로 인해 밀어낼 거리
-
       modules.each(function(d, i) {
         const group = d3.select(this);
 
         group.select('rect')
           .on('mouseover', function() {
+            const expandedWidth = moduleWidth * d['layers'].length; // 확장할 너비
+            const shiftDistance = expandedWidth - moduleWidth; // 확장으로 인해 밀어낼 거리
+
             // Expand rect 
             d3.select(this)
               .transition()
@@ -143,7 +148,35 @@
               .transition()
               .duration(500)
               .style('opacity', 0);
-          })
+
+            // Create empty group within rect
+            group.append('g')
+              .attr('class', 'layer-group')
+
+            // Add layers inside layer group
+            const layers = group.select('g.layer-group').selectAll('g')
+              .data(d['layers'])
+              .enter()
+              .append('g')
+              .attr('class', 'layer')
+              .attr('transform', (d, i) => `translate(${i * (layerWidth + moduleXMargin) + layerXOffset}, ${layerYOffset})`)
+              .style('pointer-events','none')
+
+            layers.append('rect')
+              .attr('width', layerWidth)
+              .attr('height', layerHeight)
+              .style('fill', 'white')
+              .style('stroke', 'gray')
+              .style('stroke-width', 0);
+
+            layers.append('text')
+              .attr('x', layerWidth / 2)
+              .attr('y', layerHeight / 2)
+              .attr('text-anchor', 'middle')
+              .attr('dominant-baseline', 'middle')
+              .text((d) => d['name'])
+              .style('fill', 'black');
+            })
           .on('mouseout', function() {
             // 모든 rect를 원래 크기로 복원
             d3.select(this)
@@ -151,6 +184,8 @@
               .duration(500)
               .attr('width', moduleWidth)
               .style('stroke-width', 1);
+            
+            d3.select('g.layer-group').remove();
 
             // 모든 rect를 원래 위치로 복원
             modules.transition()
@@ -161,6 +196,7 @@
             modules.select('text')
               .transition()
               .duration(500)
+              .style('display', 'inline')
               .style('opacity', 1);
         })
         //Click Effect => Call 'showDetailView'

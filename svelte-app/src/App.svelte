@@ -42,6 +42,12 @@
   const layerXOffset = (moduleWidth - layerWidth) / 2
   const layerYOffset = (moduleHeight - layerHeight) / 2
 
+  let hoveredSoftmaxBlock = undefined;
+  let tooltipVisible = false;
+  let tooltipX = 0;
+  let tooltipY = 0;
+  let top5Index = undefined;
+  let softmaxProbs = undefined;
   let openModal = false;
   let batchNormActive = false;
   let reluActive = false;
@@ -232,7 +238,7 @@
     selectedModule = selectedModuleName;
     openModal = true;
     await tick();
-
+    // modelStruct
     /* Extract selected module's layers from modelData
       modelData contains all layer information in json format */ 
     const selectedModuleLayers = [];
@@ -266,25 +272,32 @@
   // Call drawModule functions depending on the type of module
   function drawModuleDetail(moduleName, moduleLayers, inputLayer, layerNames) {
     if (moduleName === 'conv'){
-        drawConvModuleDetail(moduleLayers);
+      drawConvModuleDetail(moduleLayers);
+      drawLayerConnections();
+      setLayerEvents();
     }
     else if (moduleName === 'avgpool'){
       drawAvgpoolModuleDetail(moduleLayers);
+      drawLayerConnections();
+      setLayerEvents();
     }
     else if (moduleName === 'linear'){
       drawLinearModuleDetail(moduleLayers, inputLayer);
+      setLinearEvents();
     }
     else if (moduleName === 'residual'){
       drawResidualModuleDetail(moduleLayers, layerNames);
+      drawLayerConnections();
+      setLayerEvents();
     }
     else if (moduleName === 'inception'){
       drawInceptionModuleDetail(moduleLayers, layerNames);
+      drawLayerConnections();
+      setLayerEvents();
     }
-    drawLayerConnections();
   }
 
   function drawLayerConnections(){
-    console.log(`depth is ${moduleLayerDepth}`);
     for(let cursor = moduleLayerDepth; cursor > 0; cursor--){
       const currLayer = d3.select('#detail-svg').selectAll('g').filter(function() { 
         if(!this.getAttribute('class').includes('IntermediateResult')){
@@ -325,14 +338,14 @@
           prevLayer.each(function() {
             const srcIR = d3.select(this);
             const srcImageIndex = srcIR.attr('id').split('-')[3];
-            addHorizontalConnection(srcIR, dstIR, cursor, srcImageIndex ,dstImageIndex);
+            addImageConnection(srcIR, dstIR, cursor, srcImageIndex ,dstImageIndex);
           });
         }
         else if(layerClass === 'IntermediateResult-Concat'|| layerClass === 'IntermediateResult-Residual' || layerClass.includes('Pool')){  //ToDo(YSKIM): residual -> Add 
           const srcIR = prevLayer.filter(function() {
             return d3.select(this).attr('id').split('-')[3] === dstImageIndex;
           })
-          addHorizontalConnection(srcIR, dstIR, cursor, dstImageIndex ,dstImageIndex);
+          addImageConnection(srcIR, dstIR, cursor, dstImageIndex ,dstImageIndex);
         }
       });
     }
@@ -350,15 +363,112 @@
     });
   }
 
-  function addHorizontalConnection(srcImage, dstImage, dstLayerIndex, srcImageIndex, dstImageIndex){
+
+  function setLayerEvents(){
+    const IRs = d3.select('#detail-svg').selectAll('g').selectAll('rect.block');
+  }
+
+  function setLinearEvents(){
+    const softmaxBlocks = d3.select('#detail-svg').select('g.Intermediate-Softmax').selectAll('rect.block');
+    const blocks = d3.select('#detail-svg').selectAll('rect.block');
+    
+    //softmax block event handling    
+    softmaxBlocks.on('mouseover', function() {
+      const hoveredLabelIndex = d3.select(this).attr('id').split('-')[1];
+      // hoveredSoftmaxLabel = {class:prob}
+      tooltipVisible = true;
+    }).on('mouseout', function() {
+      hoveredSoftmaxBlock = undefined;
+      tooltipVisible = false;
+    });
+
+    //linear block event handling
+    blocks.on('mouseover', function(){
+      d3.select(this).style('stroke-width', 3);
+    }).on('mouseout',function() {
+      d3.select(this).style('stroke-width', 1);
+    }).on('click', function() {
+      d3.select('#detail-svg').selectAll('path').remove();
+      pathData = [];
+
+      const selectedBlock = d3.select(this);
+      const selectedLayerDepth = parseInt(d3.select(this.parentNode).attr('id').split('-')[1]);
+      const selectedBlockIndex = selectedBlock.attr('id').split('-')[1];
+
+      //select PrevLayer Rects
+      if(selectedLayerDepth > 0){
+        const prevBlocks = d3.select('#detail-svg').selectAll('g').filter(function(){
+          if(!this.getAttribute('class').includes('IntermediateResult')){
+            return false;
+          }
+          const isPrevLayer = parseInt(d3.select(this).attr('id').split('-')[1]) === (selectedLayerDepth - 1);
+          const isDisplayInline = window.getComputedStyle(this).display === 'inline';
+
+          return isPrevLayer && isDisplayInline;
+        }).selectAll('rect');
+
+        prevBlocks.each(function() {
+            const prevBlock = d3.select(this);
+            const prevBlockIndex = prevBlock.attr('id').split('-')[1];
+            addBlockConnection(prevBlock, selectedBlock, selectedLayerDepth, prevBlockIndex, selectedBlockIndex);
+        });
+      }
+      //select NextLayer Rects
+      if(selectedLayerDepth < moduleLayerDepth){
+        const nextBlocks = d3.select('#detail-svg').selectAll('g').filter(function(){
+          if(!this.getAttribute('class').includes('IntermediateResult')){
+            return false;
+          }
+          const isNextLayer = parseInt(d3.select(this).attr('id').split('-')[1]) === (selectedLayerDepth + 1);
+          const isDisplayInline = window.getComputedStyle(this).display === 'inline';
+
+          return isNextLayer && isDisplayInline;
+        }).selectAll('rect');
+        
+        nextBlocks.each(function() {
+            const nextBlock = d3.select(this);
+            const nextBlockIndex = nextBlock.attr('id').split('-')[1];
+            addBlockConnection(selectedBlock, nextBlock, selectedLayerDepth + 1, selectedBlockIndex, nextBlockIndex);
+        });
+      }
+
+      pathData.forEach(path => {
+      d3.select('#detail-svg').append('path')
+          .attr('d', link({
+            source: path.source,
+            target: path.target
+          }))
+          .attr('fill', 'none')
+          .attr('stroke', 'gray')
+          .attr('stroke-width', 1)
+          .attr('id', path.id)
+          .style('stroke-opacity', 0.3);
+      });
+    });
+  }
+  function addBlockConnection(srcBlock, dstBlock, dstLayerIndex, srcBlockIndex, dstBlockIndex){
+    const srcGroupTranslate = srcBlock.node().parentNode.getAttribute('transform').match(/translate\(([^)]+)\)/);
+    let srcCoordinates = srcGroupTranslate[1].split(',').map(function(d) { return parseFloat(d); });
+    srcCoordinates[0] = srcCoordinates[0] + parseFloat(srcBlock.attr('x')) + parseFloat(srcBlock.attr('width'));
+    srcCoordinates[1] = srcCoordinates[1] + parseFloat(srcBlock.attr('y')) + parseFloat(srcBlock.attr('height')) / 2;
+
+    const dstGroupTranslate = dstBlock.node().parentNode.getAttribute('transform').match(/translate\(([^)]+)\)/);
+    let dstCoordinates = dstGroupTranslate[1].split(',').map(function(d) { return parseFloat(d); });
+    dstCoordinates[0] = dstCoordinates[0] + parseFloat(dstBlock.attr('x'));
+    dstCoordinates[1] = dstCoordinates[1] + parseFloat(dstBlock.attr('y')) + parseFloat(dstBlock.attr('height')) / 2;
+
+    pathData.push({ id:`edge-${dstLayerIndex}-${srcBlockIndex}-${dstBlockIndex}`, source: srcCoordinates, target: dstCoordinates}) 
+  }
+
+  function addImageConnection(srcImage, dstImage, dstLayerIndex, srcImageIndex, dstImageIndex){
     const srcTranslate = srcImage.attr('transform').match(/translate\(([^)]+)\)/);
     let srcCoordinates = srcTranslate[1].split(',').map(function(d) { return parseFloat(d); });
     srcCoordinates[0] = srcCoordinates[0] + imageWidth;
-    srcCoordinates[1] = srcCoordinates[1] + imageHeight/2;
+    srcCoordinates[1] = srcCoordinates[1] + imageHeight / 2;
 
     const dstTranslate = dstImage.attr('transform').match(/translate\(([^)]+)\)/);
     let dstCoordinates = dstTranslate[1].split(',').map(function(d) { return parseFloat(d); });
-    dstCoordinates[1] = dstCoordinates[1] + imageHeight/2;
+    dstCoordinates[1] = dstCoordinates[1] + imageHeight / 2;
 
     pathData.push({ id:`edge-${dstLayerIndex}-${srcImageIndex}-${dstImageIndex}`, source: srcCoordinates, target: dstCoordinates}) 
   }
@@ -429,25 +539,32 @@
     moduleLayers.forEach((layer, layerIndex) => {
       //Input Layer (Original input, Flatten input)
       if(layerIndex === 0){
-        const inputX = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
-        const inputY = moduleYPadding + (offsetY);
-        drawLayer(inputLayer, visibleLayerIndex, hiddenLayerCount, inputX, inputY, 'inline', 'input');
+        // const inputX = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
+        // const inputY = moduleYPadding + (offsetY);
+        // drawLayer(inputLayer, visibleLayerIndex, hiddenLayerCount, inputX, inputY, 'inline', 'input');
 
-        const x = moduleXPadding + (visibleLayerIndex + 1) * (imageWidth + offsetX);
+        const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
         const y = moduleYPadding + (offsetY);
-        drawFlatten3D(inputLayer, 0, 0, x, y, 'inline', 'input');
+        // drawFlatten3D(inputLayer, 0, 0, x, y, 'inline', 'input');
+        drawLinear(layer['input'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['class']);
       }
       //Last Layer contains Top-10 prediction labes (output_index) and probability (output)
       if(layerIndex === (moduleLayers.length - 1)){
+        visibleLayerIndex++;
+        hiddenLayerCount = 0;
         //TODO(YSKIM): Print top 10 labels
-        // const x = moduleXPadding + (layerIndex - hiddenLayerCount + 1) * (imageWidth + offsetX);
-        // const y = moduleYPadding + (offsetY);
-        //drawPredcition(layer, x, y, 1);
+        const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
+        const y = moduleYPadding + (offsetY);
+        
+        softmaxProbs = layer['softmax_output'];
+        top5Index = layer['output_index'];
+
+        drawLinear(layer['softmax_output'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', 'Softmax');
       }
       //ReLU Layer
       else if(layer['class'] === 'ReLU'){
         hiddenLayerCount++;
-        const x = moduleXPadding + (visibleLayerIndex + 1) * (imageWidth + offsetX);
+        const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
         const y = moduleYPadding + (offsetY);
         drawLinear(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'none', layer['class']);
       }
@@ -455,7 +572,7 @@
       else if(layer['class'] === 'Linear'){
         visibleLayerIndex++;
         hiddenLayerCount = 0;
-        const x = moduleXPadding + (visibleLayerIndex + 1) * (imageWidth + offsetX);
+        const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
         const y = moduleYPadding + (offsetY);
         drawLinear(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['class']);
       }
@@ -685,6 +802,7 @@
         .attr('y', linearRectHeight * index)
         .attr('width', linearRectWidth)
         .attr('height', linearRectHeight)
+        .attr('class','block')
         .attr('id', `block-${index}`)
         .style('fill', colorScale(value))
         .style('stroke', 'black')
@@ -914,7 +1032,8 @@
   </ModalHeader>
   <ModalBody>
     <div id="svg-container">
-      <svg id="detail-svg"></svg>
+      <svg id="detail-svg">
+      </svg>
     </div>
   </ModalBody>
   <ModalFooter class="d-flex justify-content-end">

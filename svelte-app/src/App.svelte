@@ -43,7 +43,7 @@
   const layerYOffset = (moduleHeight - layerHeight) / 2
 
   let hoveredSoftmaxBlock = undefined;
-  let tooltipVisible = false;
+  // let tooltipVisible = false;
   let tooltipX = 0;
   let tooltipY = 0;
   let top5Index = undefined;
@@ -283,11 +283,12 @@
     }
     else if (moduleName === 'linear'){
       drawLinearModuleDetail(moduleLayers, inputLayer);
-      setLinearEvents();
+      setLinearLayerEvents();
     }
     else if (moduleName === 'residual'){
       drawResidualModuleDetail(moduleLayers, layerNames);
       drawLayerConnections();
+      drawShortCuts();
       setLayerEvents();
     }
     else if (moduleName === 'inception'){
@@ -295,6 +296,64 @@
       drawLayerConnections();
       setLayerEvents();
     }
+  }
+
+  function drawShortCuts(){
+    const residualLayer = d3.select('#detail-svg').selectAll('g.IntermediateResult-Residual');
+    const stepBeforeLine = d3.line()
+                            .x(d => d[0])
+                            .y(d => d[1])
+                            .curve(d3.curveStepBefore);
+    const stepAfterLine = d3.line()
+                            .x(d => d[0])
+                            .y(d => d[1])
+                            .curve(d3.curveStepAfter);
+    residualLayer.each(function() {
+      const dstIR = d3.select(this);
+      const idTokens = dstIR.attr('id').split('-');
+      const dstLayerIndex = idTokens[1];
+      const dstImageIndex = idTokens[3];
+      const srcIR = d3.select('#detail-svg').select(`g#IR-0-0-${dstImageIndex}`);
+
+      const srcGroupTranslate = srcIR.attr('transform').match(/translate\(([^)]+)\)/);
+      const srcCoordinates = srcGroupTranslate[1].split(',').map(function(d) { return parseFloat(d); });
+
+      const dstGroupTranslate = dstIR.attr('transform').match(/translate\(([^)]+)\)/);
+      const dstCoordinates = dstGroupTranslate[1].split(',').map(function(d) { return parseFloat(d); });
+
+      const leftX = srcCoordinates[0] + imageWidth / 2;
+      const rightX = dstCoordinates[0] + imageWidth / 2;
+      const bottomY = srcCoordinates[1];
+      const topY = bottomY - offsetY / 2;
+
+      const pathDataBeforeLine = [
+        [leftX, bottomY],
+        [(leftX + rightX) / 2, topY]
+      ];
+
+      const pathDataAfterLine = [
+        [(leftX + rightX) / 2, topY],
+        [rightX, bottomY]
+      ];
+        
+      d3.select('#detail-svg').append('path')
+        .attr('d', stepBeforeLine(pathDataBeforeLine))
+        .attr('fill', 'none')
+        .attr('stroke', 'gray')
+        .attr('class','residual-edge')
+        .attr('id', `edge-${dstLayerIndex}-${dstImageIndex}-${dstImageIndex}`)
+        .attr('stroke-width', 1)
+        .style('stroke-opacity', 0.5);
+        
+        d3.select('#detail-svg').append('path')
+        .attr('d', stepAfterLine(pathDataAfterLine))
+        .attr('fill', 'none')
+        .attr('stroke', 'gray')
+        .attr('class','residual-edge')
+        .attr('id', `edge-${dstLayerIndex}-${dstImageIndex}-${dstImageIndex}`)
+        .attr('stroke-width', 1)
+        .style('stroke-opacity', 0.5);
+    });
   }
 
   function drawLayerConnections(){
@@ -355,6 +414,7 @@
             source: path.source,
             target: path.target
           }))
+          .attr('class','edge')
           .attr('fill', 'none')
           .attr('stroke', 'gray')
           .attr('stroke-width', 1)
@@ -365,25 +425,74 @@
 
 
   function setLayerEvents(){
-    const IRs = d3.select('#detail-svg').selectAll('g').selectAll('rect.block');
+    const IRs = d3.select('#detail-svg').selectAll('g').filter(function() { return this.getAttribute('class').includes('IntermediateResult') });
+    let paths = undefined;
+    
+    IRs.on('mouseover', function() {
+      const idTokens = d3.select(this).attr('id').split('-');
+      const layerIndex = idTokens[1];
+      const IRIndex = idTokens[3];
+      const IRClass = d3.select(this).attr('class');
+
+      // const paths = d3.select('#detail-svg').selectAll('path').filter(function() {
+      paths = d3.select('#detail-svg').selectAll('path').filter(function() {
+        const edgeClass = d3.select(this).attr('class');
+        const edgeIndex = d3.select(this).attr('id').split('-');
+        const isNextLayerPath = (parseInt(edgeIndex[1]) - 1 === parseInt(layerIndex)) && (edgeIndex[2] === IRIndex);
+        const isPrevLayerPath = (edgeIndex[1] === layerIndex) && (edgeIndex[3] === IRIndex);
+        const isNextLayerNotResidual = (parseInt(edgeIndex[1]) - 1 === parseInt(layerIndex)) && (edgeClass === 'edge');
+
+        return (isNextLayerPath && isNextLayerNotResidual) || isPrevLayerPath;
+      });
+
+      paths.attr('stroke-width', 3)
+        .style('stroke-opacity', 0.7);
+
+      
+      const strokeFill = (IRClass.includes('ReLU')) ? 'black' : (IRClass.includes('BatchNorm2d')) ? 'black' : 'gray'
+
+      d3.select(this).append('rect')
+        .attr('class', 'IR-wrapper')
+        .attr('width', imageWidth)
+        .attr('height', imageHeight)
+        .attr('fill', 'none')
+        .attr('stroke', strokeFill)
+        .attr('stroke-width', 3)
+        .style('stroke-opacity', 1);
+
+    }).on('mouseout', function() {
+      const layerIndex = d3.select(this).attr('id').split('-')[1];
+      const IRIndex = d3.select(this).attr('id').split('-')[3];
+
+      paths.attr('stroke-width', 1)
+        .style('stroke-opacity', 0.5);
+
+      d3.select(this).select('rect.IR-wrapper').remove();
+    });
   }
 
-  function setLinearEvents(){
+  function setLinearLayerEvents(){
     const softmaxBlocks = d3.select('#detail-svg').select('g.Intermediate-Softmax').selectAll('rect.block');
     const blocks = d3.select('#detail-svg').selectAll('rect.block');
     
+    // d3.select('#detail-svg').on('click', function() {
+    //   d3.select(this).selectAll('path').remove();
+    //   // tooltipLock = true;
+    //   // tooltipVisible = false;
+    // })
+
     //softmax block event handling    
     softmaxBlocks.on('mouseover', function() {
       const hoveredLabelIndex = d3.select(this).attr('id').split('-')[1];
       // hoveredSoftmaxLabel = {class:prob}
-      tooltipVisible = true;
+      // tooltipVisible = true;
     }).on('mouseout', function() {
       hoveredSoftmaxBlock = undefined;
-      tooltipVisible = false;
+      // tooltipVisible = false;
     });
 
     //linear block event handling
-    blocks.on('mouseover', function(){
+    blocks.on('mouseover', function() {
       d3.select(this).style('stroke-width', 3);
     }).on('mouseout',function() {
       d3.select(this).style('stroke-width', 1);
@@ -584,39 +693,32 @@
   function drawResidualModuleDetail(moduleLayers, layerNames){  
     let visibleLayerIndex = 0;
     let hiddenLayerCount = 0;
-    const residualY = imageHeight;
     console.log(layerNames)
     console.log(moduleLayers)
     moduleLayers.forEach((layer, layerIndex) => {
       //last RelU Layer includes identity
       if(layerIndex === (moduleLayers.length - 1)){   
         const inputX = moduleXPadding;
-        const inputY = moduleYPadding + (offsetY) + residualY;
+        const inputY = moduleYPadding + (offsetY);
         drawLayer(layer['identity'], 0, 0, inputX, inputY, 'inline', 'input');
 
         visibleLayerIndex++;
         hiddenLayerCount = 0;
         const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
-        const y = moduleYPadding + (offsetY) + residualY;
-        const x1 = inputX + imageWidth/2;
-        const x2 = x + imageWidth/2;
-        drawShortcut(x1, x2, y, 1);
+        const y = moduleYPadding + (offsetY);
+        // const x1 = inputX + imageWidth/2;
+        // const x2 = x + imageWidth/2;
+        // drawShortcut(x1, x2, y, 1);
         drawLayer(layer['input'], visibleLayerIndex, 0, x, y, 'inline', 'Residual');
         drawLayer(layer['output'], visibleLayerIndex, 1, x, y, 'none', layer['class']);
       }
       else if(layerNames[layerIndex].includes('downsample')){
-        const x1 = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
-        const y1 = moduleYPadding + (offsetY) + residualY;
-
-        // const x2 = 
-        // cosnt y2 = 
-
-        // drawLayer(layer['identity'], x1, x2, y1, 1);
+        //ToDo: Add downsampling IR result
       } 
       else if(layer['class'] === 'ReLU' || layer['class'] === 'BatchNorm2d'){
         hiddenLayerCount++;
         const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
-        const y = moduleYPadding + (offsetY) + residualY;
+        const y = moduleYPadding + (offsetY);
 
         visibleLayerIndex = visibleLayerIndex;
         drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'none', layer['class']);
@@ -625,63 +727,11 @@
         visibleLayerIndex++;
         hiddenLayerCount = 0;
         const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
-        const y = moduleYPadding + (offsetY) + residualY;
+        const y = moduleYPadding + (offsetY);
         drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['class']);
       }
     });
     moduleLayerDepth = visibleLayerIndex;
-
-    function drawShortcut(x1, x2, y0, z){
-      const detailSVG = d3.select('#detail-svg');
-      const stepBeforeLine = d3.line()
-                            .x(d => d[0])
-                            .y(d => d[1])
-                            .curve(d3.curveStepBefore);
-      const stepAfterLine = d3.line()
-                            .x(d => d[0])
-                            .y(d => d[1])
-                            .curve(d3.curveStepAfter);
-      let y1;
-      let y2;
-      for(let i = 0; i < imageNum; i++){
-        const shortcutGroup = detailSVG.append('g')
-                              .attr('class','shortcut')
-                              .attr('id', `edge-${i}`);
-        y1 = y0 + i * (imageHeight + offsetY);
-        y2 = i < imageNum / 2 ? y0 - (imageHeight + offsetY) : y0 + (imageNum + 1) * (imageHeight + offsetY) + imageHeight;
-
-        const pathDataBeforeLine = [
-          [x1, y1],
-          [(x1 + x2) / 2, y2]
-        ];
-
-        const pathDataAfterLine = [
-          [(x1 + x2) / 2, y2],
-          [x2, y1]
-        ];
-          
-        shortcutGroup.append('path')
-          .attr('d', stepBeforeLine(pathDataBeforeLine))
-          .attr('fill', 'none')
-          .attr('stroke', 'black')
-          .attr('class',`line-${i}`)
-          .attr('stroke-width', 1)
-          .style('stroke-opacity', 0);
-          
-        shortcutGroup.append('path')
-          .attr('d', stepAfterLine(pathDataAfterLine))
-          .attr('fill', 'none')
-          .attr('stroke', 'black')
-          .attr('class',`line-${i}`)
-          .attr('stroke-width', 1)
-          .style('stroke-opacity', 0);
-      }
-      detailSVG.selectAll('path.line-0').style('stroke-opacity', 1)
-      updateSVGSize(x2 + imageWidth, y2);
-    }
-    function drawDownSample(layer, x1, y1, x2, y2, z){
-  
-    }
   }
 
   // Draw Inception Module
@@ -854,9 +904,9 @@
     const cellSize = 133 / image.length;
     const numRows = image.length;
     const numCols = image[0].length; 
-    const strokeFill = (layerClass === 'ReLU') ? 'black' : (layerClass === '"BatchNorm2d"') ? 'black' : 'gray'
+    const strokeFill = (layerClass === 'ReLU') ? 'black' : (layerClass === 'BatchNorm2d') ? 'black' : 'gray'
     // const strokeWidth = 1;
-    const strokeWidth = (layerClass === 'ReLU') ? 3 : (layerClass === '"BatchNorm2d"') ? 3 : 1;
+    const strokeWidth = 1;
     const className = (branchName === 'none') ? `IntermediateResult-${layerClass}`:  `IntermediateResult-${branchName}-${layerClass}`
     let detailSVG = d3.select('#detail-svg');
     
@@ -931,21 +981,21 @@
     }
     detailSVG.selectAll('g.IntermediateResult-ReLU').each(function() {
         const id = d3.select(this).attr('id');
-        const parts = id.split('-');
-        const num = parseInt(parts[1], 10); 
-        const convLayerId = `IR-${parts[1]}-0-${parts[3]}`;
-        const convLayer = d3.select(`#${convLayerId}`);
+        const tokens = id.split('-');
+        const num = parseInt(tokens[1], 10); 
+        const LayerId = `IR-${tokens[1]}-0-${tokens[3]}`;
+        const Layer = d3.select(`#${LayerId}`);
 
         if(!reluActive){      
-          convLayer.transition().duration(1000).style('display', 'none')
-              .on('end', () => {
-                  d3.select(this).transition().duration(1000).style('display', 'inline');
+          Layer.transition().style('display', 'none')
+              .on('start', () => {
+                  d3.select(this).transition().style('display', 'inline');
               });
         }
         else{
-          d3.select(this).transition().duration(1000).style('display', 'none')
-              .on('end', () => {
-                convLayer.transition().duration(1000).style('display', 'inline');
+          d3.select(this).transition().style('display', 'none')
+              .on('start', () => {
+                Layer.transition().style('display', 'inline');
               });
         }
     });
@@ -954,25 +1004,25 @@
     let detailSVG = d3.select('#detail-svg');
     let bnClassSelector = 'g.IntermediateResult-BatchNorm2d';
     if(typeof selectedBranch !== 'undefined'){
-      detailSVG = d3.select(`g#${selectedBranch}`);
+      detailSVG = d3.select('#detail-svg').select(`g#${selectedBranch}`);
       bnClassSelector = `g.IntermediateResult-${selectedBranch}-BatchNorm2d`;
     }
     detailSVG.selectAll(bnClassSelector).each(function() {
         const id = d3.select(this).attr('id');
-        const parts = id.split('-');
-        const convLayerId = `IR-${parts[1]}-0-${parts[3]}`;
-        const convLayer = d3.select(`#${convLayerId}`);
+        const tokens = id.split('-');
+        const LayerId = `IR-${tokens[1]}-0-${tokens[3]}`;
+        const Layer = detailSVG.select(`#${LayerId}`);
 
         if(!batchNormActive){      
-          convLayer.transition().duration(1000).style('display', 'none')
-              .on('end', () => {
-                  d3.select(this).transition().duration(1000).style('display', 'inline');
+          Layer.transition().style('display', 'none')
+              .on('start', () => {
+                  d3.select(this).transition().style('display', 'inline');
               });
         }
         else{
-          d3.select(this).transition().duration(1000).style('display', 'none')
-              .on('end', () => {
-                convLayer.transition().duration(1000).style('display', 'inline');
+          d3.select(this).transition().style('display', 'none')
+              .on('start', () => {
+                Layer.transition().style('display', 'inline');
               });
         }
     });

@@ -1,7 +1,7 @@
 <script>
 	import { onMount, tick } from 'svelte';
   import * as d3 from 'd3';
-  import { Input, FormGroup, Label, FormCheck, Button, Row, Col, Modal, ModalBody, ModalHeader, ModalFooter } from 'sveltestrap';
+  import { Container, Input, FormGroup, Label, FormCheck, Button, Row, Col, Modal, ModalBody, ModalHeader, ModalFooter } from 'sveltestrap';
 
   //######################################################################//
   let selectedModel = undefined;
@@ -48,6 +48,8 @@
   let tooltipY = 0;
   let top5Index = undefined;
   let softmaxProbs = undefined;
+  let isHuggingFaceModel = false;
+  let isUserInputImage = false;
   let openModal = false;
   let batchNormActive = false;
   let reluActive = false;
@@ -1027,45 +1029,82 @@
         }
     });
   }
+
+function handleFileChange() {
+
+
+}
 </script>
 
 <style>
-#svg-container {
-    overflow: auto;
-    height: 100%;
-    width: 100%;
-}
+  #svg-container {
+      overflow: auto;
+      height: 100%;
+      width: 100%;
+  }
 </style>
 
-<Row>
-  <Col sm="auto" class="d-flex align-items-center">
-    <FormGroup class="d-flex align-items-center mb-0">
-      <Label for="model-select" class="me-2 mb-0">Model</Label>
-      <Input type="select" bind:value={selectedModel} id="model-select" class="me-3">
-        {#each imagenetModels as modelName}
-          <option value={modelName}>{modelName}</option>
-        {/each}
-      </Input>
-    </FormGroup>
-  </Col>
+<Container fluid>
+  <Row class="h-100">
+    <Col class="d-flex flex-column" style="flex: 0 0 400px; max-width: 400px; height: 100vh; overflow-y: auto;">
+      <Row class="d-flex align-items-center">
+        <FormCheck type="switch" id="form-model" label="Hugging Face Model URL" bind:checked={isHuggingFaceModel} />
+      </Row>
+      <Row class="d-flex align-items-center">
+        <FormGroup class="d-flex align-items-center mb-0">
+          <Label for="model-select" class="me-2 mb-0">Model</Label>
+          <Input type="select" bind:value={selectedModel} id="model-select" class="me-3" disabled={isHuggingFaceModel}>
+            {#each imagenetModels as modelName}
+              <option value={modelName}>{modelName}</option>
+            {/each}
+          </Input>
+        </FormGroup>
+      </Row>
+      <Row class="d-flex align-items-center">
+        <FormGroup class="d-flex align-items-center mb-0">
+          <Label for="HuggingFace-url" class="me-2 mb-0">URL</Label>
+          <Input type="text" id="model-url" placeholder="Type 'ms/resnet18' here" class="me-3" disabled={!isHuggingFaceModel} />
+        </FormGroup>
+      </Row>
 
-  <Col sm="auto" class="d-flex align-items-center">
-    <FormGroup class="d-flex align-items-center mb-0">
-      <Label for="class-select" class="me-2 mb-0">Class</Label>
-      <Input type="select" bind:value={selectedClass} id="class-select" class="me-3">
-        {#each Object.entries(imagenetClasses) as [index, className]}
-          <option value={index}>{index}: {className}</option>
-        {/each}
-      </Input>
-    </FormGroup>
-  </Col>
 
-  <Col sm="auto" class="d-flex align-items-center">
-    <Button color="primary" on:click={loadModelView}>Load</Button>
-  </Col>
-</Row>
 
-<div id="model-load"></div>
+      <Row class="d-flex align-items-center">
+        <FormCheck type="switch" id="form-model" label="User Input Image" bind:checked={isUserInputImage} />
+      </Row>
+      <Row class="d-flex align-items-center">
+        <FormGroup class="d-flex align-items-center mb-0">
+          <Label for="class-select" class="me-2 mb-0">Class</Label>
+          <Input type="select" bind:value={selectedClass} id="class-select" class="me-3" disabled={isUserInputImage}>
+            {#each Object.entries(imagenetClasses) as [index, className]}
+              <option value={index}>{index}: {className}</option>
+            {/each}
+          </Input>
+        </FormGroup>
+      </Row>
+
+      <Row class="d-flex align-items-center">
+        <FormGroup class="d-flex align-items-center mb-0">
+          <Label for="class-select" class="me-2 mb-0">User Input</Label>
+          <Input type="file" id="image-upload" accept="image/*" on:change={handleFileChange} disabled={!isUserInputImage} />
+        </FormGroup>
+      </Row>
+    
+      <Row class="d-flex align-items-center">
+        <Button color="secondary" on:click={loadModelView}>Load</Button>
+      </Row>
+
+      <Row class="mt-auto">
+      </Row>
+
+
+    </Col>
+    <Col style="flex-grow: 1; height: 100vh;">
+      <div id="model-load">
+      </div>
+    </Col>
+  </Row>
+</Container>
 
 <Modal isOpen={openModal} toggle={closeDetailView} size='lg'>
   <ModalHeader toggle={closeDetailView}>

@@ -2,6 +2,7 @@
 	import { onMount, tick } from 'svelte';
   import * as d3 from 'd3';
   import { Container, Input, FormGroup, Label, FormCheck, Button, Row, Col, Modal, ModalBody, ModalHeader, ModalFooter } from 'sveltestrap';
+  import Header from './Header.svelte'
 
   //######################################################################//
   let selectedModel = undefined;
@@ -22,10 +23,7 @@
     imagenetClasses = await response.json();
     selectedModel = imagenetModels[0];
     selectedClass = "0";
-    modelSVG = d3.select('#model-load')
-                    .append('svg')
-                    .attr('width', 2000)
-                    .attr('height', 1000);  
+    modelSVG = d3.select('#model-container').select('svg');
     link = d3.linkHorizontal()
       .x(d=>d[0])
       .y(d=>d[1]);
@@ -1044,13 +1042,15 @@ function handleFileChange() {
   }
 </style>
 
+<Header/>
+
 <Container fluid>
   <Row class="h-100">
-    <Col class="d-flex flex-column" style="flex: 0 0 400px; max-width: 400px; height: 100vh; overflow-y: auto;">
-      <Row class="d-flex align-items-center">
+    <Col class="d-flex flex-column" style="flex: 0 0 400px; max-width: 400px; height: 100vh; overflow-y: auto; background-color: rgba(249,249,249,255);">
+      <Row class="d-flex align-items-center" style="padding: 2.5px 10px;">
         <FormCheck type="switch" id="form-model" label="Hugging Face Model URL" bind:checked={isHuggingFaceModel} />
       </Row>
-      <Row class="d-flex align-items-center">
+      <Row class="d-flex align-items-center" style="padding: 2.5px 10px;">
         <FormGroup class="d-flex align-items-center mb-0">
           <Label for="model-select" class="me-2 mb-0">Model</Label>
           <Input type="select" bind:value={selectedModel} id="model-select" class="me-3" disabled={isHuggingFaceModel}>
@@ -1060,19 +1060,16 @@ function handleFileChange() {
           </Input>
         </FormGroup>
       </Row>
-      <Row class="d-flex align-items-center">
+      <Row class="d-flex align-items-center" style="padding: 2.5px 10px;">
         <FormGroup class="d-flex align-items-center mb-0">
           <Label for="HuggingFace-url" class="me-2 mb-0">URL</Label>
-          <Input type="text" id="model-url" placeholder="Type 'ms/resnet18' here" class="me-3" disabled={!isHuggingFaceModel} />
+          <Input type="text" id="model-url" placeholder="Type 'microsoft/resnet-18' here" class="me-3" disabled={!isHuggingFaceModel} />
         </FormGroup>
       </Row>
-
-
-
-      <Row class="d-flex align-items-center">
-        <FormCheck type="switch" id="form-model" label="User Input Image" bind:checked={isUserInputImage} />
+      <Row class="d-flex align-items-center" style="padding: 2.5px 10px;">
+        <FormCheck type="switch" id="form-model" label="User Image Input" bind:checked={isUserInputImage} />
       </Row>
-      <Row class="d-flex align-items-center">
+      <Row class="d-flex align-items-center" style="padding: 2.5px 10px;">
         <FormGroup class="d-flex align-items-center mb-0">
           <Label for="class-select" class="me-2 mb-0">Class</Label>
           <Input type="select" bind:value={selectedClass} id="class-select" class="me-3" disabled={isUserInputImage}>
@@ -1085,7 +1082,7 @@ function handleFileChange() {
 
       <Row class="d-flex align-items-center">
         <FormGroup class="d-flex align-items-center mb-0">
-          <Label for="class-select" class="me-2 mb-0">User Input</Label>
+          <Label for="class-select" class="me-2 mb-0">Image Input</Label>
           <Input type="file" id="image-upload" accept="image/*" on:change={handleFileChange} disabled={!isUserInputImage} />
         </FormGroup>
       </Row>
@@ -1100,7 +1097,9 @@ function handleFileChange() {
 
     </Col>
     <Col style="flex-grow: 1; height: 100vh;">
-      <div id="model-load">
+      <div id="model-container" style="width: 100%; height: 100%; overflow: auto;">
+        <svg style="width: 100%; height: 100%; display: block; min-width: 100%; min-height: 100%;">
+        </svg>
       </div>
     </Col>
   </Row>

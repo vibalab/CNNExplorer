@@ -29,6 +29,15 @@ def load_pretrained_model(model_name, numbering):
     model.eval()
     return model
 
+def load_huggingface_model(model_name):
+    from transformers import AutoConfig, AutoImageProcessor, AutoModelForImageClassification
+    model_name = 'microsoft/resnet-50'
+    config = AutoConfig.from_pretrained(model_name)
+    processor = AutoImageProcessor.from_pretrained(model_name)
+    model = AutoModelForImageClassification.from_config(config)
+    model.eval()
+    return model, processor
+
 def get_layer_from_str(model, string):
     keys = string.split('.')
     layer = model
@@ -76,7 +85,7 @@ layer_dict = {
         "cat": [torch.cat],
         "linear": [nn.Linear],
         "add": [operator.add],
-        "ignore": [nn.Dropout]
+        "ignore": [nn.Dropout, nn.Identity]
         }
 
 def check_layer(layer):
@@ -300,6 +309,7 @@ def main(log_dir, data_dir, model_name):
     symbolic_traced : torch.fx.GraphModule = symbolic_trace(model)
     global global_graph 
     global_graph = symbolic_traced.graph
+    global_graph.print_tabular()
 
     for node in global_graph.nodes:
         if node.op not in ["placeholder", "output"] and type(node.target) == str:
@@ -375,6 +385,11 @@ def main(log_dir, data_dir, model_name):
                     avg_activation = np.abs(np.mean(activation, axis=(1, 2)))
                     node.output_index = (-avg_activation).argsort()[:8]
 
+    # apply index for identity in residual
+    for node in global_graph.nodes:
+        if node.layer_type == "add":
+            node.identity = node.args[1].output[node.output_index].tolist()
+
     # apply index
     for node in global_graph.nodes:
         if "input" in dir(node) and "input_index" in dir(node):
@@ -423,7 +438,7 @@ def main(log_dir, data_dir, model_name):
                 info[node.name][k] = node.__getattribute__(k)
 
         if node.layer_type == "add":
-            info[node.name]['identity'] = node.args[0].output
+            info[node.name]['identity'] = node.identity
         
         order_i += 1
         layer_i += 1
@@ -458,7 +473,7 @@ if __name__ == "__main__":
     test_image = "./test_image/cat/image_1.jpg"
 
     imagenet_data = get_imagenet_data()[:1]
-    for model in ['alexnet', 'resnet18', 'googlenet', 'vgg16']:
+    for model in ['resnet18']:#['alexnet', 'resnet18', 'googlenet', 'vgg16']:
         for index, data in enumerate(imagenet_data):
             #label = IMAGENET_CLASSES[index]
             main(f"./svelte-app/public/output/{index}/", data, model)

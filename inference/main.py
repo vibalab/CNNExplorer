@@ -201,7 +201,7 @@ def main(log_dir, data_dir, model_name):
             act_node = next_type_if_exist(bn_node, "relu", global_graph)
             
             activation = act_node.output
-            avg_activation = torch.mean(torch.abs(activation), axis=(1, 2))
+            avg_activation = np.mean(np.abs(activation), axis=(1, 2))
             node.output_index = (-avg_activation).argsort()[:oisize]
             #node.output_index = range(oisize)
 
@@ -394,7 +394,7 @@ if __name__ == "__main__":
 
     model_list = tv_models + tf_models + timm_models
 
-    for model in ["timm/inception_v3.tv_in1k"]:#["resnet18"]:
+    for model in ["resnet18"]:#["timm/inception_v3.tv_in1k"]:
         for index, data in tqdm(enumerate(imagenet_data)):
             #label = IMAGENET_CLASSES[index]
             main(f"./svelte-app/public/output/{index}/", data, model)

@@ -201,7 +201,11 @@ def main(log_dir, data_dir, model_name):
             act_node = next_type_if_exist(bn_node, "relu", global_graph)
             
             activation = act_node.output
-            avg_activation = np.mean(np.abs(activation), axis=(1, 2))
+
+            if isinstance(activation, np.ndarray):
+                avg_activation = np.mean(np.abs(activation), axis=(1,2))
+            else:
+                avg_activation = torch.mean(torch.abs(activation), axis=(1, 2))
             node.output_index = (-avg_activation).argsort()[:oisize]
             #node.output_index = range(oisize)
 
@@ -386,15 +390,24 @@ if __name__ == "__main__":
     # timm/vgg 
 
     work = ["timm/inception_v3.tf_in1k"]
+    work2 = ["timm/vgg11.tv_in1k"]
+    work3 = ["timm/vgg11_bn.tv_in1k"]
 
-    test = ["alexnet", "vgg16"] 
+    test = ["alexnet", "vgg16"]
+    test_v = ["vgg16", "timm/vgg11.tv_in1k"]
     test_r = ["resnet18", "microsoft/resnet-18", "timm/resnet18.a1_in1k"]
     test_g = ["googlenet", "timm/inception_v3.tf_in1k"]
     
 
     model_list = tv_models + tf_models + timm_models
 
+<<<<<<< HEAD
     for model in ["resnet18"]:#["timm/inception_v3.tv_in1k"]:
+=======
+    #for model in ["timm/inception_v3.tv_in1k"]:
+    #for model in ["timm/vgg11.tv_in1k"]:
+    for model in ["resnet18"]:
+>>>>>>> b7756a58fa12991e647a2afae7b9c5dfe86f1074
         for index, data in tqdm(enumerate(imagenet_data)):
             #label = IMAGENET_CLASSES[index]
             main(f"./svelte-app/public/output/{index}/", data, model)

@@ -35,10 +35,6 @@
   const moduleWidth = 100;
   const moduleHeight = 400;
 
-  const layerWidth = moduleWidth * 0.8
-  const layerHeight = moduleHeight * 0.8
-  const layerXOffset = (moduleWidth - layerWidth) / 2
-  const layerYOffset = (moduleHeight - layerHeight) / 2
 
   let hoveredSoftmaxBlock = undefined;
   // let tooltipVisible = false;
@@ -89,19 +85,30 @@
       let moduleIdx = layerInfo['module_index']
       let moduleName = layerInfo['module_name']
       let layerName = layerInfo['class']
+      let branch_str_idx = key.indexOf('branch')
 
       if (moduleStruct[moduleIdx] === undefined){ //
         moduleStruct.push({
           'name': moduleName,
-          'layers': []
+          'layers': [[]]
         });
       }
-
-      moduleStruct[moduleIdx]['layers'].push({
-        'name': layerName
-      }); 
+      if (branch_str_idx === -1){
+        moduleStruct[moduleIdx]['layers'][0].push({
+          'name': layerName
+        }); 
+      }
+      else {
+        // Assuming there are only less than 10 branches
+        let branchIdx = key.substring(branch_str_idx+6, branch_str_idx+7) - 1
+        if (moduleStruct[moduleIdx]['layers'][branchIdx] === undefined){
+          moduleStruct[moduleIdx]['layers'].push([])
+        }
+        moduleStruct[moduleIdx]['layers'][branchIdx].push({
+          'name': layerName
+        }); 
+      }
     }
-
     const moduleGroup = modelSVG.append('g').attr('class', 'module-group');
 
     const modules = moduleGroup.selectAll('g')
@@ -133,8 +140,20 @@
 
         group.select('rect')
           .on('mouseover', function() {
-            const expandedWidth = moduleWidth * d['layers'].length; // 확장할 너비
+            let maxLength = 0
+            const numBranch = d['layers'].length
+            for (let i = 0; i < numBranch; i++) {
+            // for (const ex in d['layers']){
+              maxLength = Math.max(maxLength, d['layers'][i].length)
+            }
+            console.log(`Max layers in this module ${maxLength}`)
+            const expandedWidth = moduleWidth * maxLength; // 확장할 너비
             const shiftDistance = expandedWidth - moduleWidth; // 확장으로 인해 밀어낼 거리
+            const layerWidth = moduleWidth * 0.8
+            const layerHeight = moduleHeight * 0.8 / numBranch
+            const layerXOffset = (moduleWidth - layerWidth) / 2
+            const layerYOffset = (moduleHeight - layerHeight) / 2
+            const layerYMargin = (moduleHeight - layerHeight *  numBranch) / (numBranch + 1)
 
             // Expand rect 
             d3.select(this)
@@ -157,16 +176,26 @@
 
             // Create empty group within rect
             group.append('g')
-              .attr('class', 'layer-group')
+              .attr('class', 'branch-group')
 
             // Add layers inside layer group
-            const layers = group.select('g.layer-group').selectAll('g')
+            let branch = group.select('g.branch-group').selectAll('g')
               .data(d['layers'])
               .enter()
               .append('g')
-              .attr('class', 'layer')
-              .attr('transform', (d, i) => `translate(${i * (layerWidth + moduleXMargin) + layerXOffset}, ${layerYOffset})`)
+              .attr('class', 'branch')
+              .attr('transform', (d, i) => `translate(${0}, ${i * (layerHeight + layerYMargin) + layerYMargin})`)
               .style('pointer-events','none')
+
+            branch.append('g')
+              .attr('class', 'layer-group')
+
+            const layers = branch.select('g.layer-group').selectAll('g')
+              .data((d) => d)
+              .enter()
+              .append('g')
+              .attr('class', 'layer')
+              .attr('transform', (d, i) => `translate(${i * (layerWidth + moduleXMargin) + layerXOffset}, ${0})`)
 
             layers.append('rect')
               .attr('width', layerWidth)
@@ -191,7 +220,7 @@
               .attr('width', moduleWidth)
               .style('stroke-width', 1);
             
-            d3.select('g.layer-group').remove();
+            d3.select('g.branch-group').remove();
 
             // 모든 rect를 원래 위치로 복원
             modules.transition()

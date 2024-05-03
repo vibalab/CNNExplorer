@@ -201,6 +201,7 @@ def main(log_dir, data_dir, model_name):
             act_node = next_type_if_exist(bn_node, "relu", global_graph)
             
             activation = act_node.output
+
             if isinstance(activation, np.ndarray):
                 avg_activation = np.mean(np.abs(activation), axis=(1,2))
             else:
@@ -353,9 +354,13 @@ if __name__ == "__main__":
 
     model_list = tv_models + tf_models + timm_models
 
+<<<<<<< HEAD
+    for model in ["resnet18"]:#["timm/inception_v3.tv_in1k"]:
+=======
     #for model in ["timm/inception_v3.tv_in1k"]:
     #for model in ["timm/vgg11.tv_in1k"]:
     for model in ["resnet18"]:
+>>>>>>> b7756a58fa12991e647a2afae7b9c5dfe86f1074
         for index, data in tqdm(enumerate(imagenet_data)):
             #label = IMAGENET_CLASSES[index]
             main(f"./svelte-app/public/output/{index}/", data, model)

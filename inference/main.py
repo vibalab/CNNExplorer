@@ -276,7 +276,8 @@ def main(log_dir, data_dir, model_name):
             module_info["layers"].append(get_layer_info(node))
 
         prev_module_node_list = node_list
-        info.append(module_info)
+        if node.module not in ["ignore"]:
+            info.append(module_info)
 
     # np to list
     for module in info:
@@ -303,54 +304,6 @@ def main(log_dir, data_dir, model_name):
             if 'output_index' in layer: print(layer['output_index'][:5])
 
         print()
-
-    '''
-    order_i = 0
-    module_i = -1
-    layer_i = 0
-    prev_module = None
-    module_list = []
-    info = {}
-    for node in global_graph.nodes:
-        if node.op in ["placeholder", "output"] or node.module in ["ignore"]: continue
-
-        if prev_module != node.module:
-            module_list.append(node.module.split("_")[0])
-            module_i += 1
-            layer_i = 0
-
-        info[node.name] = {
-                'order_index': order_i,
-                'module_name': node.module.split("_")[0], 
-                'module_index': module_i, 
-                'layer_index': layer_i,
-                'layer_type': node.layer_type,
-                'arguments': 0, #node.layer.argument...,
-                'class': str(type(node))
-                }
-        
-        keys = ["input", "output", "input_index", "output_index", "softmax_output", "identity", "top5", "metadata"]
-        for k in keys:
-            if k in dir(node):
-                info[node.name][k] = node.__getattribute__(k)
-
-        order_i += 1
-        layer_i += 1
-        prev_module = node.module
-
-    #for k in info:
-    #    print(f"{info[k]['module_index']} , {info[k]['layer_index']}, {k}, {info[k]['layer_type']} ,{info[k]['module_name']} ")
-    #    if 'input_index' in info[k]: print(f"input index: {info[k]['input_index']}")
-    #    if 'output_index' in info[k]: print(f"output index: {info[k]['output_index']}")
-
-    info['structure'] = module_list
-    
-
-    for k in info:
-        for kk in info[k]:
-            if isinstance(info[k], dict) and isinstance(info[k][kk], np.ndarray):
-                info[k][kk] = info[k][kk].tolist()
-    '''
 
     with open(os.path.join(log_dir, model_name.replace("/","__")+'_info.json'), "w") as f:
         json.dump(info, f)

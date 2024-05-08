@@ -401,13 +401,10 @@ if __name__ == "__main__":
 
     model_list = tv_models + tf_models + timm_models
 
-<<<<<<< HEAD
-    for model in ["resnet18"]:#["timm/inception_v3.tv_in1k"]:
-=======
-    #for model in ["timm/inception_v3.tv_in1k"]:
-    #for model in ["timm/vgg11.tv_in1k"]:
-    for model in ["resnet18"]:
->>>>>>> b7756a58fa12991e647a2afae7b9c5dfe86f1074
+    # for model in ["timm/inception_v3.tv_in1k"]:
+    # for model in ["timm/vgg11.tv_in1k"]:
+    # for model in ["resnet18"]:
+    for model in tv_models:
         for index, data in tqdm(enumerate(imagenet_data)):
             #label = IMAGENET_CLASSES[index]
             main(f"./svelte-app/public/output/{index}/", data, model)

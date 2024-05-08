@@ -43,11 +43,7 @@
   const moduleWidth = 100;
   const moduleHeight = 400;
 
-
-  let hoveredsoftmaxBlock = undefined;
-  // let tooltipVisible = false;
-  let tooltipX = 0;
-  let tooltipY = 0;
+  let infoBoxIndex = -1;
   let top5Index = undefined;
   let softmaxProbs = undefined;
   let isHuggingFaceModel = false;
@@ -66,16 +62,6 @@
     d3.select('#module-svg')
       .attr('width', newWidth)
       .attr('height', newHeight);
-
-    // const svg = d3.select('#module-svg');
-    // const container = d3.select('#svg-container');
-
-    // // SVG의 크기를 구하고 컨테이너의 스타일을 업데이트
-    // const width = svg.getBBox().width;
-    // const height = svg.getBBox().height;
-
-    // container.style.width = `${newWidth}px`;
-    // container.style.height = `${height}px`;
   }
 
   async function loadModelView() {
@@ -86,37 +72,6 @@
 
     // JSON 객체의 모든 키를 출력
     console.log("Keys in JSON:", Object.keys(modelData));
-
-    // let moduleStruct = [];
-    // for (const key in modelData) {
-    //   let layerInfo = modelData[key]
-    //   let moduleIdx = layerInfo['module_index']
-    //   let moduleName = layerInfo['module_name']
-    //   let layerName = layerInfo['class']
-    //   let branch_str_idx = key.indexOf('branch')
-
-    //   if (moduleStruct[moduleIdx] === undefined){ //
-    //     moduleStruct.push({
-    //       'name': moduleName,
-    //       'layers': [[]]
-    //     });
-    //   }
-    //   if (branch_str_idx === -1){
-    //     moduleStruct[moduleIdx]['layers'][0].push({
-    //       'name': layerName
-    //     }); 
-    //   }
-    //   else {
-    //     // Assuming there are only less than 10 branches
-    //     let branchIdx = key.substring(branch_str_idx+6, branch_str_idx+7) - 1
-    //     if (moduleStruct[moduleIdx]['layers'][branchIdx] === undefined){
-    //       moduleStruct[moduleIdx]['layers'].push([])
-    //     }
-    //     moduleStruct[moduleIdx]['layers'][branchIdx].push({
-    //       'name': layerName
-    //     }); 
-    //   }
-    // }
 
     const moduleGroup = modelSVG.select('g#model-structure').append('g').attr('class', 'module-group');
     const modules = moduleGroup.selectAll('g')
@@ -154,8 +109,8 @@
           .on('mouseover', function() {
             let maxLength = 0
             const layerLength = d['layers'].length;
-
-            const numBranch = d['branches'].length - 1
+            const numBranch = d['branches'].length;
+            
             for (let i = 0; i < numBranch; i++) {
               maxLength = Math.max(maxLength, d['branches'][i].length)
             }
@@ -163,10 +118,11 @@
             const expandedWidth = moduleWidth * (maxLength + layerLength); // 확장할 너비
             const shiftDistance = expandedWidth - moduleWidth; // 확장으로 인해 밀어낼 거리
             const layerWidth = moduleWidth * 0.8
-            const layerHeight = numBranch == 0 ? moduleHeight * 0.8 : moduleHeight * 0.8 / numBranch;
+            const layerHeight = numBranch == 0 ? moduleHeight * 0.8 : moduleHeight * 0.7 / numBranch;
             const layerXOffset = (moduleWidth - layerWidth) / 2
             const layerYOffset = (moduleHeight - layerHeight) / 2
-            const layerYMargin = numBranch == 0 ? (moduleHeight - layerHeight) / 2 : (moduleHeight - layerHeight *  numBranch) / (numBranch + 1)
+            // const layerYMargin = numBranch == 0 ? (moduleHeight - layerHeight) / 2 : (moduleHeight - layerHeight *  numBranch) / (numBranch + 1)
+            const layerYMargin = numBranch == 0 ? (moduleHeight - layerHeight) / 2 : moduleHeight * 0.3 / (numBranch + 1)
 
             // Expand rect 
             d3.select(this)
@@ -191,7 +147,7 @@
             group.append('g')
               .attr('class', 'branch-group')
 
-            // Add layers inside layer group
+            // Add layers inside branch group
             const branch = group.select('g.branch-group').selectAll('g')
               .data(d['branches'])
               .enter()
@@ -243,7 +199,7 @@
               .transition()
               .delay(500)
               .attr('width', layerWidth)
-              .attr('height', layerHeight)
+              .attr('height', moduleHeight * 0.8)
               .style('fill', 'white')
               .style('stroke', 'gray')
               .style('stroke-width', 0)
@@ -253,13 +209,12 @@
               .transition()
               .delay(500)
               .attr('x', layerWidth / 2)
-              .attr('y', layerHeight / 2)
+              .attr('y', moduleHeight * 0.8 / 2)
               .attr('text-anchor', 'middle')
               .attr('dominant-baseline', 'middle')
               .text((d) => d['layer_type'])
               .style('fill', 'black')
               .attr('fill-opacity', 1);
-            
             })
           .on('mouseout', function() {
             // 모든 rect를 원래 크기로 복원
@@ -291,23 +246,11 @@
 
 
     function moduleFills(moduleName){
-      let moduleFills = undefined;
-      if (moduleName === 'conv'){
-        moduleFills = 'green'
-      }
-      else if (moduleName === 'residual'){
-        moduleFills = 'red'
-      }
-      else if (moduleName === 'avgpool'){
-        moduleFills = 'yellow'
-      }
-      else if (moduleName === 'linear'){
-        moduleFills = 'orange'
-      }
-      else if (moduleName === 'inception'){
-        moduleFills = 'gray'
-      }
-      return moduleFills
+      if (moduleName === 'conv'){ return 'green'; }
+      else if (moduleName === 'residual'){ return 'red'; }
+      else if (moduleName === 'avgpool'){ return 'yellow';}
+      else if (moduleName === 'linear'){ return 'orange'; }
+      else if (moduleName === 'inception'){ return 'gray' }
     }
   }
 
@@ -346,7 +289,6 @@
     }
     else if (selectedModuleInfo['type'] === 'linear'){
       drawLinearModuleDetail(selectedModuleInfo['layers']);
-      // drawLinearModuleDetail(moduleLayers, inputLayer);
       setLinearLayerEvents();
     }
     else if (selectedModuleInfo['type'] === 'residual'){
@@ -538,12 +480,7 @@
   function setLinearLayerEvents(){
     const softmaxBlocks = d3.select('#module-svg').select('g.Intermediate-softmax').selectAll('rect.block');
     const blocks = d3.select('#module-svg').selectAll('rect.block');
-    
-    // d3.select('#module-svg').on('click', function() {
-    //   d3.select(this).selectAll('path').remove();
-    //   // tooltipLock = true;
-    //   // tooltipVisible = false;
-    // })
+
 
     //softmax block event handling    
     softmaxBlocks.on('mouseover', function() {
@@ -567,6 +504,10 @@
       const selectedBlock = d3.select(this);
       const selectedLayerDepth = parseInt(d3.select(this.parentNode).attr('id').split('-')[1]);
       const selectedBlockIndex = selectedBlock.attr('id').split('-')[1];
+
+      //Infobox Setting --> 인덱스에 따라서 모델 변경
+      infoBoxIndex = parseInt(selectedBlockIndex);
+      // const selectedRect = this.getBoundingClientRect();
 
       //select PrevLayer Rects
       if(selectedLayerDepth > 0){
@@ -716,12 +657,8 @@
     let hiddenLayerCount = 0;
     console.log(moduleLayers)
     moduleLayers.forEach((layer, layerIndex) => {
-      //Input Layer (Original input, Flatten input)
+      //Input Layer (Flatten input)
       if(layerIndex === 0){
-        // const inputX = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
-        // const inputY = moduleYPadding + (offsetY);
-        // drawLayer(inputLayer, visibleLayerIndex, hiddenLayerCount, inputX, inputY, 'inline', 'input');
-
         const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
         const y = moduleYPadding + (offsetY);
         drawLinear(layer['input'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['layer_type']);
@@ -763,7 +700,7 @@
     let visibleLayerIndex = 0;
     let hiddenLayerCount = 0;
     let layer = undefined;
-    // console.log(layerNames)
+
     console.log(moduleLayers);
 
     const numLayers = moduleLayers['branches'][0].length + moduleLayers['layers'].length;
@@ -1232,6 +1169,13 @@ function handleFileChange() {
     </Col>
   </Row>
 </Container>
+
+{#if infoBoxIndex != -1}
+  <div id="info-box" style="position: absolute; background: white; border: 1px solid black; padding: 10px;">
+    <p>Name: ?</p>
+    <p>Role: ?</p>
+  </div>
+{/if}
 <!-- 
 <Modal isOpen={openModal} toggle={closeDetailView} size='lg'>
   <ModalHeader toggle={closeDetailView}>

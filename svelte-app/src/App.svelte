@@ -298,8 +298,6 @@
                   .attr('stroke-width', 1)
                   .style('stroke-opacity', 1);
             }
-
-            console.log('test point');
     
             layers.append('text')
               .transition()
@@ -793,8 +791,6 @@
     let visibleLayerIndex = 0;
     let hiddenLayerCount = 0;
     let layer = undefined;
-
-    console.log(moduleLayers);
 
     const numLayers = moduleLayers['branches'][0].length + moduleLayers['layers'].length;
     for(let layerIndex = 0; layerIndex < numLayers; layerIndex++){

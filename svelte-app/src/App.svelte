@@ -14,6 +14,9 @@
   let imageNum = 8;
   let pathData = [];
   let link = undefined;
+  let stepBeforeLine = undefined;
+  let stepAfterLine = undefined;
+  let straightLine = undefined;
 
   const branches = ['branch1','branch2','branch3','branch4'];
   const imagenetModels = ['alexnet', 'vgg16', 'googlenet', 'resnet18'];
@@ -35,6 +38,18 @@
     link = d3.linkHorizontal()
     .x(d=>d[0])
     .y(d=>d[1]);
+
+    stepBeforeLine = d3.line()
+                    .x(d => d[0])
+                    .y(d => d[1])
+                    .curve(d3.curveStepBefore);
+    stepAfterLine = d3.line()
+                    .x(d => d[0])
+                    .y(d => d[1])
+                    .curve(d3.curveStepAfter);
+    straightLine = d3.line()
+                    .x(d => d[0])
+                    .y(d => d[1]);
   });
 
   let modelData = undefined;
@@ -117,12 +132,11 @@
             // console.log(`Max layers in this module ${maxLength}`)
             const expandedWidth = moduleWidth * (maxLength + layerLength); // 확장할 너비
             const shiftDistance = expandedWidth - moduleWidth; // 확장으로 인해 밀어낼 거리
-            const layerWidth = moduleWidth * 0.8
-            const layerHeight = numBranch == 0 ? moduleHeight * 0.8 : moduleHeight * 0.7 / numBranch;
-            const layerXOffset = (moduleWidth - layerWidth) / 2
-            const layerYOffset = (moduleHeight - layerHeight) / 2
-            // const layerYMargin = numBranch == 0 ? (moduleHeight - layerHeight) / 2 : (moduleHeight - layerHeight *  numBranch) / (numBranch + 1)
-            const layerYMargin = numBranch == 0 ? (moduleHeight - layerHeight) / 2 : moduleHeight * 0.3 / (numBranch + 1)
+            const layerWidth = moduleWidth * 0.8;
+            const layerHeight = numBranch == 1 ? moduleHeight * 0.8 : moduleHeight * 0.7 / numBranch;
+            const layerXOffset = (moduleWidth - layerWidth) / 2;
+            const layerYOffset = (moduleHeight - layerHeight) / 2;
+            const layerYMargin = numBranch == 1 ? moduleHeight * 0.2 / 2 : moduleHeight * 0.3 / (numBranch + 1);
 
             // Expand rect 
             d3.select(this)
@@ -146,7 +160,7 @@
             // Create empty group within rect
             group.append('g')
               .attr('class', 'branch-group')
-
+            
             // Add layers inside branch group
             const branch = group.select('g.branch-group').selectAll('g')
               .data(d['branches'])
@@ -166,11 +180,13 @@
               .attr('class', 'branch-layer')
               .attr('transform', (_, i) => `translate(${i * (layerWidth + moduleXMargin) + layerXOffset}, ${0})`)
 
+            //Branch layers
             branchLayers.append('rect')
               .transition()
               .delay(500)
               .attr('width', layerWidth)
               .attr('height', layerHeight)
+              .attr('id', (_, j) => `branch-${i}-${j}`)
               .style('fill', 'white')
               .style('stroke', 'gray')
               .style('stroke-width', 0)
@@ -193,18 +209,98 @@
               .enter()
               .append('g')
               .attr('class','layer')
+              .attr('id', (_, j) => `layer-${j}`)
               .attr('transform', (_, i) => `translate(${(i + maxLength) * (layerWidth + moduleXMargin) + layerXOffset}, ${0})`);
 
             layers.append('rect')
               .transition()
               .delay(500)
               .attr('width', layerWidth)
-              .attr('height', moduleHeight * 0.8)
+              .attr('height', () => numBranch == 1 ? layerHeight : numBranch * (layerHeight + layerYMargin) - layerYMargin )
               .style('fill', 'white')
               .style('stroke', 'gray')
               .style('stroke-width', 0)
               .attr('fill-opacity', 1);
+             
+            const parentGroup = d3.selectAll('g.module').nodes()[i];
+            for(let j = 0; j < d['branches'].length; j++){
+              for(let k = 0; k <= d['branches'][j].length; k++){
+                const srcX = k == 0 ? 0 : k * (layerWidth + moduleXMargin) - layerXOffset;
+                const initY = moduleYMargin + d3.select(parentGroup).select('rect').attr('hegiht') / 2;
+                const dstX = k * (layerWidth + moduleXMargin) + layerXOffset;
+                const dstY = j * (layerHeight + layerYMargin) + layerYMargin + layerHeight / 2;
 
+                // start edge
+                if(k == 0){
+                  const initPath = [
+                    [srcX, initY], [dstX / 2, dstY], [dstX, dstY]
+                  ];                  
+                  d3.select(parentGroup).append('path')
+                  .attr('d',stepAfterLine(initPath))
+                  .attr('fill', 'none')
+                  .transition()
+                  .delay(500)
+                  .attr('stroke', 'black')
+                  .attr('class','module-edge')
+                  .attr('stroke-width', 1)
+                  .style('stroke-opacity', 1);
+                }
+                // last edge of branches
+                if(d['branches'][j].length == 0 || k == d['branches'][j].length){
+                  const modulePathData = []
+                  modulePathData.push([dstX, dstY]);
+                  modulePathData.push([maxLength * (layerWidth + moduleXMargin) + layerXOffset, dstY]);
+
+                  d3.select(parentGroup).append('path')
+                  .attr('d',straightLine(modulePathData))
+                  .attr('fill', 'none')
+                  .transition()
+                  .delay(500)
+                  .attr('stroke', 'black')
+                  .attr('class','module-edge')
+                  .attr('stroke-width', 1)
+                  .style('stroke-opacity', 1);
+                }
+                // branch edges
+                if(k > 0){
+                  const modulePathData = []
+                  modulePathData.push([srcX, dstY]);
+                  modulePathData.push([dstX, dstY]);
+
+                  d3.select(parentGroup).append('path')
+                  .attr('d',straightLine(modulePathData))
+                  .attr('fill', 'none')
+                  .transition()
+                  .delay(500)
+                  .attr('stroke', 'black')
+                  .attr('class','module-edge')
+                  .attr('stroke-width', 1)
+                  .style('stroke-opacity', 1);
+                }
+              }
+            }
+            for(let j = 0; j < d['layers'].length; j++){
+              const srcX = maxLength * (layerWidth + moduleXMargin) + (j + 1) * (layerWidth + moduleXMargin) - layerXOffset;
+              const initY = moduleYMargin + d3.select(parentGroup).select('rect').attr('hegiht') / 2;
+              const dstX = j == d['layers'].length - 1 ? srcX + layerXOffset : srcX + moduleXMargin;
+
+              const modulePathData = []
+              modulePathData.push([srcX, initY]);
+              modulePathData.push([dstX, initY]);
+
+              d3.select(parentGroup).append('path')
+                  .attr('d',straightLine(modulePathData))
+                  .attr('fill', 'none')
+                  .transition()
+                  .delay(500)
+                  .attr('stroke', 'black')
+                  .attr('class','module-edge')
+                  .attr('stroke-width', 1)
+                  .style('stroke-opacity', 1);
+            }
+
+            console.log('test point');
+    
             layers.append('text')
               .transition()
               .delay(500)
@@ -223,7 +319,8 @@
               .duration(500)
               .attr('width', moduleWidth)
               .style('stroke-width', 1);
-            
+
+            d3.select('svg#model-svg').selectAll('path').remove();
             d3.select('g.branch-group').remove();
 
             // 모든 rect를 원래 위치로 복원
@@ -306,14 +403,7 @@
 
   function drawShortCuts(){
     const residualLayer = d3.select('#module-svg').selectAll('g.IntermediateResult-add');
-    const stepBeforeLine = d3.line()
-                            .x(d => d[0])
-                            .y(d => d[1])
-                            .curve(d3.curveStepBefore);
-    const stepAfterLine = d3.line()
-                            .x(d => d[0])
-                            .y(d => d[1])
-                            .curve(d3.curveStepAfter);
+
     residualLayer.each(function() {
       const dstIR = d3.select(this);
       const idTokens = dstIR.attr('id').split('-');
@@ -361,6 +451,9 @@
         .style('stroke-opacity', 0.5);
     });
   }
+
+
+
 
   function drawLayerConnections(){
     for(let cursor = moduleLayerDepth; cursor > 0; cursor--){

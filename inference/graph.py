@@ -138,11 +138,17 @@ def set_output(target_node, graph):
             node.output = next_node.input
         next_node = node
 
-def fill_ignore(graph):
+def set_ignore(graph):
+    for node in graph.nodes:
+        if node.layer_type == "ignore":
+            node.module = "ignore"
+
+def fill_ignore(graph, set_ignore_layer_type=False):
     for node in graph.nodes:
         if "module" not in dir(node):
             node.module = "ignore"
-
+    if set_ignore_layer_type:
+        set_ignore(graph)
 
 def add_missing_inout(graph):
     for node in graph.nodes:

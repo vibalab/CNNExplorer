@@ -248,7 +248,7 @@ def main(log_dir, data_dir, model_name):
         node_list.append(node)
         prev_node = node
     module_list.append(node_list)
-
+    set_ignore(global_graph)
 
     # create info json
     # branch condition: must be splitted from last layer of previous module, must be aggregated with add(residual) or cat(inception)
@@ -270,6 +270,7 @@ def main(log_dir, data_dir, model_name):
             for node in node_list[branch_index[i]:branch_index[i+1]]:
                 if node.op in ["placeholder", "output"] or node.module in ["ignore"]: continue
                 branch_info.append(get_layer_info(node))
+            #if len(branch_info) > 0:
             module_info["branches"].append(branch_info)
         
         for node in node_list[branch_aggregater:]:
@@ -277,8 +278,7 @@ def main(log_dir, data_dir, model_name):
             module_info["layers"].append(get_layer_info(node))
 
         prev_module_node_list = node_list
-        if node.module not in ["ignore"]:
-            info.append(module_info)
+        info.append(module_info)
 
     # np to list
     for module in info:

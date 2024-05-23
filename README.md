@@ -22,9 +22,10 @@ This repository provides tools to load and inference Convolutional Neural Networ
    git clone https://github.com/Negota/vis4cnn.git
    ```
 
-2. Install Python dependencies:
+2. Install conda environment and python dependencies:
 
    ```bash
+   conda create -n vis4cnn python==3.11.5
    pip install -r requirements.txt
    ```
 3. Download imagenet sample images
@@ -33,7 +34,15 @@ This repository provides tools to load and inference Convolutional Neural Networ
    git clone https://github.com/EliSchwartz/imagenet-sample-images
    ```
 
-4. Install Svelte and JavaScript dependencies:
+4. Install nvm and NodeJS following [link](https://github.com/nvm-sh/nvm?tab=readme-ov-file#installing-and-updating)
+
+   ```bash
+   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+   source ~/.bashrc
+   nvm install node
+   ```
+
+5. Install Svelte and JavaScript dependencies:
 
    ```bash
    cd svelte-app
@@ -52,7 +61,7 @@ This repository provides tools to load and inference Convolutional Neural Networ
 Example:
 
 ```bash
-python inference.py
+python inference/main.py
 ```
 
 ### Intermediate Tensor Visualization

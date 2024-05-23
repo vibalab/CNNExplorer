@@ -60,7 +60,6 @@
 
   let infoBoxIndex = -1;
   let top5Index = undefined;
-  let softmaxProbs = undefined;
   let isHuggingFaceModel = false;
   let isUserInputImage = false;
   let openModal = false;
@@ -75,7 +74,7 @@
 
   function updateSVGSize(newWidth, newHeight) {
     d3.select('#module-svg')
-      .attr('width', newWidth)
+      .attr('width', newWidth + 500)
       .attr('height', newHeight);
   }
 
@@ -362,6 +361,7 @@
   }
   // Close Detail View 
   function clearDetailView() {
+    infoBoxIndex = -1;
     openModal = false;  
     reluActive = false;
     batchNormActive = false;
@@ -384,7 +384,7 @@
     }
     else if (selectedModuleInfo['type'] === 'linear'){
       drawLinearModuleDetail(selectedModuleInfo['layers']);
-      setLinearLayerEvents();
+      setLinearLayerEvents(selectedModuleInfo['layers']);
     }
     else if (selectedModuleInfo['type'] === 'residual'){
       drawResidualModuleDetail(selectedModuleInfo);
@@ -449,9 +449,6 @@
         .style('stroke-opacity', 0.5);
     });
   }
-
-
-
 
   function drawLayerConnections(){
     for(let cursor = moduleLayerDepth; cursor > 0; cursor--){
@@ -568,37 +565,144 @@
     });
   }
 
-  function setLinearLayerEvents(){
-    const softmaxBlocks = d3.select('#module-svg').select('g.Intermediate-softmax').selectAll('rect.block');
+  function setLinearLayerEvents(moduleLayer){
     const blocks = d3.select('#module-svg').selectAll('rect.block');
-
-
-    //softmax block event handling    
-    softmaxBlocks.on('mouseover', function() {
-      const hoveredLabelIndex = d3.select(this).attr('id').split('-')[1];
-      // hoveredsoftmaxLabel = {class:prob}
-      // tooltipVisible = true;
-    }).on('mouseout', function() {
-      hoveredsoftmaxBlock = undefined;
-      // tooltipVisible = false;
-    });
-
     //linear block event handling
     blocks.on('mouseover', function() {
       d3.select(this).style('stroke-width', 3);
     }).on('mouseout',function() {
       d3.select(this).style('stroke-width', 1);
-    }).on('click', function() {
+    }).on('click', function(_, __, i) {
+      d3.select('#module-svg').select('g.Prediction-result').remove();
       d3.select('#module-svg').selectAll('path').remove();
       pathData = [];
 
       const selectedBlock = d3.select(this);
-      const selectedLayerDepth = parseInt(d3.select(this.parentNode).attr('id').split('-')[1]);
-      const selectedBlockIndex = selectedBlock.attr('id').split('-')[1];
+      const linearLayerGroup = d3.select(this.parentNode);
+      const selectedLayerDepth = parseInt(linearLayerGroup.attr('id').split('-')[1]);
 
-      //Infobox Setting --> 인덱스에 따라서 모델 변경
-      infoBoxIndex = parseInt(selectedBlockIndex);
-      // const selectedRect = this.getBoundingClientRect();
+      if(linearLayerGroup.attr('class') == 'IntermediateResult-softmax'){
+        //Infobox Setting --> 인덱스에 따라서 모델 변경
+        const infoBoxIndex = selectedBlock.attr('id').split('-')[1];
+        // infoBoxIndex = parseInt(i);
+        
+        const translateValues = linearLayerGroup.attr('transform').match(/translate\(([^)]+)\)/)[1];
+        // Split the values into an array and convert them to numbers
+        const [groupX, groupY] = translateValues.split(',').map(Number);
+
+        const blockX = parseFloat(d3.select(this).attr('x'));
+        const blockY = parseFloat(d3.select(this).attr('y'));
+        
+        const padding = { top: 40, right: 40, bottom: 40, left: 40 };
+        const width = 600;
+        const height = 300;        
+        
+        const predictionLabel = moduleLayer[0]['top5']; 
+        // Scale for the bars
+        const x = d3.scaleLinear()
+                    .domain([0, 1])
+                    .range([0, width - padding.left - padding.right]);
+    
+        const y = d3.scaleBand()
+                    .domain(predictionLabel.map(d => imagenetClasses[d]))
+                    .range([0, height - padding.top - padding.bottom])
+                    .padding(0.1);
+        
+        const g = d3.select('svg#module-svg')
+                    .append('g')
+                    .attr('class', 'Prediction-result')
+                    .attr('transform', `translate(${groupX + blockX + 150}, ${groupY + blockY})`);
+
+        const gradient = g.append("defs")
+                          .append("linearGradient")
+                          .attr("id", "gradient")
+                          .attr("x1", "0%")
+                          .attr("x2", "100%")
+                          .attr("y1", "0%")
+                          .attr("y2", "0%");
+
+        gradient.append("stop")
+                .attr("offset", "0%")
+                .attr("style", "stop-color:rgb(255,165,0);stop-opacity:1");
+
+        gradient.append("stop")
+                .attr("offset", "100%")
+                .attr("style", "stop-color:rgb(255,215,0);stop-opacity:1");
+
+        g.append('rect')
+          .attr('class', 'Infobox')
+          .attr('width', width)
+          .attr('height',  height)
+          .attr('fill', 'white')
+          .attr('stroke', '#ccc')
+          .attr('stroke-width', '1px');
+
+        const maxTextWidth = width - padding.left - padding.right;
+
+        // 막대 생성
+        g.selectAll('.bar')
+          .data(predictionLabel)
+          .enter().append('rect')
+          .attr('class', 'bar')
+          .attr('x', padding.left)  // 막대의 x 시작 위치
+          .attr('y', d => padding.top + y(imagenetClasses[d]) + y.bandwidth() / 2 + 45)  // 막대의 y 위치
+          .attr('width', d => x(moduleLayer[0]['softmax_output'][d]))
+          .attr('height', 10)  // 막대의 높이
+          .attr('fill', 'url(#gradient)');
+
+        // 레이블 추가
+        g.selectAll('.label')
+          .data(predictionLabel)
+          .enter()
+          .append('text')
+          .attr('class', 'label')
+          .attr('x', padding.left)  // 텍스트의 x 시작 위치
+          .attr('y', d => padding.top + y(imagenetClasses[d]) + y.bandwidth() / 2 + 40)
+          .attr('dy', '-0.35em')  // 텍스트를 수직으로 중앙에 정렬
+          .attr('text-anchor', 'start')
+          .text(d => truncateText(imagenetClasses[d], maxTextWidth))
+          .style('fill', 'black');
+
+        // 확률값 추가
+        g.selectAll('.value')
+          .data(predictionLabel)
+          .enter()
+          .append('text')
+          .attr('class', 'value')
+          .attr('x', d => padding.left + x(moduleLayer[0]['softmax_output'][d]) + 5)  // 값의 x 시작 위치
+          .attr('y', d => padding.top + y(imagenetClasses[d]) + y.bandwidth() / 2 + 55)
+          .attr('text-anchor', 'start')
+          .text(d => `${(moduleLayer[0]['softmax_output'][d] * 100).toFixed(2)}%`)
+          .style('fill', 'black');
+
+          
+        // 중앙에 가장 높은 확률의 항목 라벨 추가
+        g.append("text")
+          .attr("x", width / 2)
+          .attr("y", padding.top - 10)
+          .attr("text-anchor", "middle")
+          .attr("font-size", "24px")
+          .attr("fill", "black")
+          .text(truncateText(imagenetClasses[infoBoxIndex], maxTextWidth));
+
+        // 막대 생성
+        g.append('rect')
+          .attr('class', 'bar')
+          .attr('x', padding.left)  // 막대의 x 시작 위치
+          .attr('y', padding.top + 20)  // 막대의 y 위치
+          .attr('width', x(moduleLayer[0]['softmax_output'][infoBoxIndex]))
+          .attr('height', 20)  // 막대의 높이
+          .attr('fill', 'url(#gradient)');
+
+        g.append('text')
+          .attr('class', 'value')
+          .attr("x", width / 2)
+          .attr("y", padding.top + 15)
+          .attr("text-anchor", "middle")
+          .attr("font-size", "24px")
+          .text(d => `${(moduleLayer[0]['softmax_output'][infoBoxIndex] * 100).toFixed(3)}%`)
+          .style('fill', 'black');
+      }
 
       //select PrevLayer Rects
       if(selectedLayerDepth > 0){
@@ -615,7 +719,7 @@
         prevBlocks.each(function() {
             const prevBlock = d3.select(this);
             const prevBlockIndex = prevBlock.attr('id').split('-')[1];
-            addBlockConnection(prevBlock, selectedBlock, selectedLayerDepth, prevBlockIndex, selectedBlockIndex);
+            addBlockConnection(prevBlock, selectedBlock, selectedLayerDepth, prevBlockIndex, i);
         });
       }
       //select NextLayer Rects
@@ -633,7 +737,7 @@
         nextBlocks.each(function() {
             const nextBlock = d3.select(this);
             const nextBlockIndex = nextBlock.attr('id').split('-')[1];
-            addBlockConnection(selectedBlock, nextBlock, selectedLayerDepth + 1, selectedBlockIndex, nextBlockIndex);
+            addBlockConnection(selectedBlock, nextBlock, selectedLayerDepth + 1, i, nextBlockIndex);
         });
       }
 
@@ -651,6 +755,25 @@
       });
     });
   }
+  function truncateText(text, maxWidth) {
+    const context = document.createElement('canvas').getContext('2d');
+    context.font = '24px sans-serif';
+    let width = context.measureText(text).width;
+    let ellipsis = '...';
+    let ellipsisWidth = context.measureText(ellipsis).width;
+
+    if (width <= maxWidth) {
+      return text;
+    }
+
+    while (width >= maxWidth - ellipsisWidth && text.length > 0) {
+      text = text.slice(0, -1);
+      width = context.measureText(text).width;
+    }
+
+    return text + ellipsis;
+  }
+
   function addBlockConnection(srcBlock, dstBlock, dstLayerIndex, srcBlockIndex, dstBlockIndex){
     const srcGroupTranslate = srcBlock.node().parentNode.getAttribute('transform').match(/translate\(([^)]+)\)/);
     let srcCoordinates = srcGroupTranslate[1].split(',').map(function(d) { return parseFloat(d); });
@@ -761,9 +884,6 @@
         //TODO(YSKIM): Print top 10 labels
         const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
         const y = moduleYPadding + (offsetY);
-        
-        softmaxProbs = layer['softmax_output'];
-        top5Index = layer['top5'];
 
         drawLinear(layer['softmax_output'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', 'softmax');
       }
@@ -817,43 +937,6 @@
         drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'none', layer['layer_type']);
       }
     }
-    // console.log(moduleLayers)
-    // moduleLayers.forEach((layer, layerIndex) => {
-    //   //last RelU Layer includes identity
-    //   if(layerIndex === (moduleLayers.length - 1)){   
-    //     const inputX = moduleXPadding;
-    //     const inputY = moduleYPadding + (offsetY);
-    //     drawLayer(layer['identity'], 0, 0, inputX, inputY, 'inline', 'input');
-
-    //     visibleLayerIndex++;
-    //     hiddenLayerCount = 0;
-    //     const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
-    //     const y = moduleYPadding + (offsetY);
-    //     // const x1 = inputX + imageWidth/2;
-    //     // const x2 = x + imageWidth/2;
-    //     // drawShortcut(x1, x2, y, 1);
-    //     drawLayer(layer['input'], visibleLayerIndex, 0, x, y, 'inline', 'Residual');
-    //     drawLayer(layer['output'], visibleLayerIndex, 1, x, y, 'none', layer['layer_type']);
-    //   }
-    //   else if(layerNames[layerIndex].includes('downsample')){
-    //     //ToDo: Add downsampling IR result
-    //   } 
-    //   else if(layer['layer_type'] === 'relu' || layer['layer_type'] === 'bn'){
-    //     hiddenLayerCount++;
-    //     const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
-    //     const y = moduleYPadding + (offsetY);
-
-    //     visibleLayerIndex = visibleLayerIndex;
-    //     drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'none', layer['layer_type']);
-    //   }
-    //   else if(layer['layer_type'] === 'conv' || layer['layer_type'].includes('pool')){
-    //     visibleLayerIndex++;
-    //     hiddenLayerCount = 0;
-    //     const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
-    //     const y = moduleYPadding + (offsetY);
-    //     drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['layer_type']);
-    //   }
-    // });
     moduleLayerDepth = visibleLayerIndex;
   }
 
@@ -865,7 +948,6 @@
     let hiddenLayerCount = 0;
     let visibleLayerIndex = 0;
     const detailSVG = d3.select('#module-svg');
-    let brachGroup = undefined;
 
     moduleLayers.forEach((layer, layerIndex) => {
       let currentBranch = layerNames[layerIndex].split('.')[1];
@@ -900,7 +982,8 @@
       }
       //Other Layers (Conv, Pool)
       else if(layer['layer_type'] === 'conv' || layer['layer_type'].includes('pool')){
-        visibleLayerIndex++;
+        visibl
+        eLayerIndex++;
         hiddenLayerCount = 0;
         const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
         const y = moduleYPadding;
@@ -1258,13 +1341,6 @@ function handleFileChange() {
     </Col>
   </Row>
 </Container>
-
-{#if infoBoxIndex != -1}
-  <div id="info-box" style="position: absolute; background: white; border: 1px solid black; padding: 10px;">
-    <p>Name: ?</p>
-    <p>Role: ?</p>
-  </div>
-{/if}
 <!-- 
 <Modal isOpen={openModal} toggle={closeDetailView} size='lg'>
   <ModalHeader toggle={closeDetailView}>

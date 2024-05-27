@@ -3,6 +3,7 @@
   import * as d3 from 'd3';
   import { Container, Input, FormGroup, Label, FormCheck, Button, Row, Col, Modal, ModalBody, ModalHeader, ModalFooter } from 'sveltestrap';
   import Header from './Header.svelte'
+    // import { construct_svelte_component } from 'svelte/internal';
 
   //######################################################################//
   let selectedModel = undefined;
@@ -18,7 +19,7 @@
   let stepAfterLine = undefined;
   let straightLine = undefined;
 
-  const branches = ['branch1','branch2','branch3','branch4'];
+  let branches = [];
   const imagenetModels = ['alexnet', 'vgg16', 'googlenet', 'resnet18'];
   let imagenetClasses ={}
   onMount(async () => {
@@ -353,7 +354,7 @@
     if(openModal){
       clearDetailView();
     }
-    // selectedModule = selectedModuleName;
+    selectedModule = selectedModuleInfo['type'];
     openModal = true;
     await tick();
 
@@ -367,6 +368,7 @@
     batchNormActive = false;
     selectedBranch = undefined;
     pathData = [];
+    branches = [];
     d3.select('#module-svg').selectAll("*").remove();
   }
 
@@ -394,7 +396,6 @@
     }
     else if (selectedModuleInfo['type'] === 'inception'){
       drawInceptionModuleDetail(selectedModuleInfo);
-      drawLayerConnections();
       setLayerEvents();
     }
   }
@@ -435,7 +436,7 @@
         .attr('fill', 'none')
         .attr('stroke', 'gray')
         .attr('class','residual-edge')
-        .attr('id', `edge-${dstLayerIndex}-${dstImageIndex}-${dstImageIndex}`)
+        .attr('id', `edge-0-${dstImageIndex}-${dstLayerIndex}-${dstImageIndex}`)
         .attr('stroke-width', 1)
         .style('stroke-opacity', 0.5);
         
@@ -444,7 +445,7 @@
         .attr('fill', 'none')
         .attr('stroke', 'gray')
         .attr('class','residual-edge')
-        .attr('id', `edge-${dstLayerIndex}-${dstImageIndex}-${dstImageIndex}`)
+        .attr('id', `edge-0-${dstImageIndex}-${dstLayerIndex}-${dstImageIndex}`)
         .attr('stroke-width', 1)
         .style('stroke-opacity', 0.5);
     });
@@ -465,22 +466,22 @@
           return isDisplayInline && isInlineBranch && isCurrentLayerDepth;
         }
         return isDisplayInline && isCurrentLayerDepth;
-    });
+      });
 
-    const prevLayer = d3.select('#module-svg').selectAll('g').filter(function() { 
-      if(!this.getAttribute('class').includes('IntermediateResult')){
-          return false;
-      }
-      const isCurrentLayerDepth = this.getAttribute('id').split('-')[1] === String(cursor - 1);
-      const isDisplayInline = window.getComputedStyle(this).display === 'inline';
-      //In case of inception --> check isInlineBranch
-      if(this.getAttribute('class').includes('branch')){
-        // const isInlineBranch = this.className.baseVal.includes(selectedBranch);
-        const isInlineBranch = this.getAttribute('class').includes(selectedBranch);
-        return isDisplayInline && isInlineBranch && isCurrentLayerDepth;
-      }
-      return isDisplayInline && isCurrentLayerDepth;
-    });
+      const prevLayer = d3.select('#module-svg').selectAll('g').filter(function() { 
+        if(!this.getAttribute('class').includes('IntermediateResult')){
+            return false;
+        }
+        const isCurrentLayerDepth = this.getAttribute('id').split('-')[1] === String(cursor - 1);
+        const isDisplayInline = window.getComputedStyle(this).display === 'inline';
+        //In case of inception --> check isInlineBranch
+        if(this.getAttribute('class').includes('branch')){
+          // const isInlineBranch = this.className.baseVal.includes(selectedBranch);
+          const isInlineBranch = this.getAttribute('class').includes(selectedBranch);
+          return isDisplayInline && isInlineBranch && isCurrentLayerDepth;
+        }
+        return isDisplayInline && isCurrentLayerDepth;
+      });
 
       currLayer.each(function() {
         const dstIR = d3.select(this);
@@ -491,14 +492,81 @@
           prevLayer.each(function() {
             const srcIR = d3.select(this);
             const srcImageIndex = srcIR.attr('id').split('-')[3];
-            addImageConnection(srcIR, dstIR, cursor, srcImageIndex ,dstImageIndex);
+            addImageConnection(srcIR, dstIR, cursor - 1, cursor, srcImageIndex ,dstImageIndex);
           });
         }
-        else if(layerClass === 'IntermediateResult-Concat'|| layerClass === 'IntermediateResult-add' || layerClass.includes('pool')){  //ToDo(YSKIM): residual -> Add 
+        else if(layerClass === 'IntermediateResult-add' || layerClass.includes('pool')){
           const srcIR = prevLayer.filter(function() {
             return d3.select(this).attr('id').split('-')[3] === dstImageIndex;
           })
-          addImageConnection(srcIR, dstIR, cursor, dstImageIndex ,dstImageIndex);
+          addImageConnection(srcIR, dstIR, cursor - 1, cursor, dstImageIndex ,dstImageIndex);
+        }
+      });
+    }
+    pathData.forEach(path => {
+      d3.select('#module-svg').append('path')
+          .attr('d', link({
+            source: path.source,
+            target: path.target
+          }))
+          .attr('class','edge')
+          .attr('fill', 'none')
+          .attr('stroke', 'gray')
+          .attr('stroke-width', 1)
+          .attr('id', path.id)
+          .style('stroke-opacity', 0.5);
+    });
+  }
+
+  function drawInceptionLayerConnections(){
+    const branchLayers = d3.select('#module-svg').select(`g#${selectedBranch}`).selectAll('g').filter(function(){
+      const idTokens = d3.select(this).attr('id').split('-');
+      return idTokens[2] == '0' && idTokens[3] == '0';
+    });
+    const layers = d3.select('#module-svg').selectAll('g').filter(function(){
+      const idTokens = d3.select(this).attr('id').split('-');
+      const isBranchLayer = d3.select(this).attr('class').includes('branch');
+      return idTokens[2] == '0' && idTokens[3] == '0' && !isBranchLayer;
+    });
+    let layerOrder = [];
+    branchLayers.each(function() {
+      layerOrder.push(parseInt(d3.select(this).attr('id').split('-')[1]))
+    });
+    layers.each(function() {
+      layerOrder.push(parseInt(d3.select(this).attr('id').split('-')[1]))
+    });
+
+    layerOrder.sort((a, b) => b - a);
+
+    for (let i = 0; i < layerOrder.length - 1; i++) {
+      const cursor = layerOrder[i];
+      const currLayer = d3.select('#module-svg').selectAll('g').filter(function() { 
+        const idTokens = d3.select(this).attr('id').split('-');
+        return parseInt(idTokens[1]) == cursor && idTokens[2] == '0';
+      });
+
+      const prevLayer = d3.select('#module-svg').selectAll('g').filter(function() { 
+        const idTokens = d3.select(this).attr('id').split('-');
+        return parseInt(idTokens[1]) == layerOrder[i + 1] && idTokens[2] == '0';
+      });
+
+      currLayer.each(function() {
+        const dstIR = d3.select(this);
+        const layerClass = dstIR.attr('class');
+        const dstImageIndex = dstIR.attr('id').split('-')[3];
+
+        if (layerClass.includes('conv')) {
+          prevLayer.each(function() {
+            const srcIR = d3.select(this);
+            const srcImageIndex = srcIR.attr('id').split('-')[3];
+            addImageConnection(srcIR, dstIR, layerOrder[i + 1], cursor, srcImageIndex ,dstImageIndex);
+          });
+        }
+        else if(layerClass === 'IntermediateResult-add' || layerClass === 'IntermediateResult-cat'  || layerClass.includes('pool')){
+          const srcIR = prevLayer.filter(function() {
+            return d3.select(this).attr('id').split('-')[3] === dstImageIndex;
+          })
+          addImageConnection(srcIR, dstIR, layerOrder[i + 1],cursor, dstImageIndex ,dstImageIndex);
         }
       });
     }
@@ -518,6 +586,7 @@
   }
 
 
+
   function setLayerEvents(){
     const IRs = d3.select('#module-svg').selectAll('g').filter(function() { return this.getAttribute('class').includes('IntermediateResult') });
     let paths = undefined;
@@ -528,15 +597,12 @@
       const IRIndex = idTokens[3];
       const IRClass = d3.select(this).attr('class');
 
-      // const paths = d3.select('#module-svg').selectAll('path').filter(function() {
       paths = d3.select('#module-svg').selectAll('path').filter(function() {
-        const edgeClass = d3.select(this).attr('class');
         const edgeIndex = d3.select(this).attr('id').split('-');
-        const isNextLayerPath = (parseInt(edgeIndex[1]) - 1 === parseInt(layerIndex)) && (edgeIndex[2] === IRIndex);
-        const isPrevLayerPath = (edgeIndex[1] === layerIndex) && (edgeIndex[3] === IRIndex);
-        const isNextLayerNotResidual = (parseInt(edgeIndex[1]) - 1 === parseInt(layerIndex)) && (edgeClass === 'edge');
+        const isSrcLayerPath = (parseInt(edgeIndex[1]) === parseInt(layerIndex)) && (edgeIndex[2] === IRIndex);
+        const isDstLayerPath = (edgeIndex[3] === layerIndex) && (edgeIndex[4] === IRIndex);
 
-        return (isNextLayerPath && isNextLayerNotResidual) || isPrevLayerPath;
+        return isDstLayerPath || isSrcLayerPath;
       });
 
       paths.attr('stroke-width', 3)
@@ -555,9 +621,6 @@
         .style('stroke-opacity', 1);
 
     }).on('mouseout', function() {
-      const layerIndex = d3.select(this).attr('id').split('-')[1];
-      const IRIndex = d3.select(this).attr('id').split('-')[3];
-
       paths.attr('stroke-width', 1)
         .style('stroke-opacity', 0.5);
 
@@ -788,7 +851,7 @@
     pathData.push({ id:`edge-${dstLayerIndex}-${srcBlockIndex}-${dstBlockIndex}`, source: srcCoordinates, target: dstCoordinates}) 
   }
 
-  function addImageConnection(srcImage, dstImage, dstLayerIndex, srcImageIndex, dstImageIndex){
+  function addImageConnection(srcImage, dstImage, srcLayerIndex, dstLayerIndex, srcImageIndex, dstImageIndex){
     const srcTranslate = srcImage.attr('transform').match(/translate\(([^)]+)\)/);
     let srcCoordinates = srcTranslate[1].split(',').map(function(d) { return parseFloat(d); });
     srcCoordinates[0] = srcCoordinates[0] + imageWidth;
@@ -798,7 +861,7 @@
     let dstCoordinates = dstTranslate[1].split(',').map(function(d) { return parseFloat(d); });
     dstCoordinates[1] = dstCoordinates[1] + imageHeight / 2;
 
-    pathData.push({ id:`edge-${dstLayerIndex}-${srcImageIndex}-${dstImageIndex}`, source: srcCoordinates, target: dstCoordinates}) 
+    pathData.push({ id:`edge-${srcLayerIndex}-${srcImageIndex}-${dstLayerIndex}-${dstImageIndex}`, source: srcCoordinates, target: dstCoordinates}) 
   }
   // Draw Conv Module 
   function drawConvModuleDetail(moduleLayers){
@@ -943,51 +1006,58 @@
   // Draw Inception Module
   function drawInceptionModuleDetail(moduleLayers){
     console.log(moduleLayers);
-    // branchLayerNum = getBranchStruct()
     let branchName = '';
     let hiddenLayerCount = 0;
     let visibleLayerIndex = 0;
     const detailSVG = d3.select('#module-svg');
+    let branchDepth = 0;
 
-    moduleLayers.forEach((layer, layerIndex) => {
-      let currentBranch = layerNames[layerIndex].split('.')[1];
+    moduleLayers['branches'].forEach((branch, branchIndex) => {
+      branchName = 'branch' + (branchIndex + 1).toString();
+      branches.push(branchName);
+      detailSVG.append('g')
+      .attr('id', `${branchName}`)
+      .attr('class', 'branch');
       //Input Layer 
-      if(layerIndex === 0){
-        const x = moduleXPadding + (layerIndex) * (imageWidth + offsetX);
-        const y = moduleYPadding;
+      hiddenLayerCount = 0;
+      visibleLayerIndex = 0;
+      if(branchIndex === 0){
+        const inputX = moduleXPadding;
+        const inputY = moduleYPadding;
+        drawLayer(branch[0]['input'], visibleLayerIndex, 0, inputX, inputY, 'inline', 'Input');
+      }
+      branch.forEach((layer) =>{
+        const layerVisible = layer['layer_type'] === 'conv' || layer['layer_type'] === 'pool' ? true: false;
+        if(layerVisible){
+          visibleLayerIndex++;
+          hiddenLayerCount = 0;
+        }
+        else{
+          hiddenLayerCount++;
+        }
+        const layerX = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
+        const layerY = moduleYPadding;
+        drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, layerX, layerY, layerVisible, layer['layer_type'], branchName);
+      });
+      branchDepth = Math.max(branchDepth, visibleLayerIndex);
+    });
 
-        drawLayer(layer['input'], visibleLayerIndex, 0, x, y, 'inline', 'Input');
-      }
-      //Last Layer
-      if(layerIndex === moduleLayers.length - 1){
-        const x = moduleXPadding + 3 * (imageWidth + offsetX);
-        const y = moduleYPadding;
-        //Draw output layer
-        moduleLayerDepth = 2;
-        drawLayer(layer['output'], moduleLayerDepth, 0, x, y, 'inline', 'Concat'); 
-      }
-      if(branchName !== currentBranch){
+    visibleLayerIndex = branchDepth;
+    moduleLayers['layers'].forEach((layer) => {
+      //Conv, Pool, cat Layer
+      if(layer['layer_type'] === 'conv' || layer['layer_type'].includes('pool') || layer['layer_type'] === 'cat'){
+        visibleLayerIndex++;
         hiddenLayerCount = 0;
-        visibleLayerIndex = 0;
-        branchName = currentBranch
-        brachGroup = detailSVG.append('g')
-                              .attr('id', `${branchName}`)
-                              .attr('class', 'branch');
+        const layerX = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
+        const layerY = moduleYPadding;
+        drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, layerX, layerY, 'inline', layer['layer_type']);
       }
-      if(layer['layer_type'] === 'relu' || layer['layer_type'] === 'bn'){
+      //ReLU & BatchNorm Layer
+      else if(layer['layer_type'] === 'relu' || layer['layer_type'] === 'bn'){
         hiddenLayerCount++;
-        const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
-        const y = moduleYPadding;
-        drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'none', layer['layer_type'], branchName);
-      }
-      //Other Layers (Conv, Pool)
-      else if(layer['layer_type'] === 'conv' || layer['layer_type'].includes('pool')){
-        visibl
-        eLayerIndex++;
-        hiddenLayerCount = 0;
-        const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
-        const y = moduleYPadding;
-        drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['layer_type'], branchName);
+        const layerX = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
+        const layerY = moduleYPadding;
+        drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, layerX, layerY, 'none', layer['layer_type']);
       }
     });
     selectedBranch = 'branch1';
@@ -1009,7 +1079,7 @@
                                     .filter(function() {return window.getComputedStyle(this).display === 'inline';})
                                     .size() / 8;
 
-      d3.select('#module-svg').selectAll('g.IntermediateResult-Concat').each(function(){
+      d3.select('#module-svg').selectAll('g.IntermediateResult-cat').each(function(){
         const currentImageIndex = d3.select(this).attr('id').split('-')[3];
         const newImageIndex = `IR-${numLayerCurrentBranch + 1}-0-${currentImageIndex}`
         d3.select(this).attr('id', newImageIndex);
@@ -1019,7 +1089,7 @@
 
       d3.select('#module-svg').selectAll('path').remove();
       pathData = [];
-      drawLayerConnections();
+      drawInceptionLayerConnections();
     }
   }
 
@@ -1109,7 +1179,7 @@
     const cellSize = 133 / image.length;
     const numRows = image.length;
     const numCols = image[0].length; 
-    const strokeFill = (layerClass === 'relu') ? 'black' : (layerClass === 'bn') ? 'black' : 'gray'
+    const strokeFill = (layerClass === 'relu') || (layerClass === 'bn') ? 'black' : 'gray'
     // const strokeWidth = 1;
     const strokeWidth = 1;
     const className = (branchName === 'none') ? `IntermediateResult-${layerClass}`:  `IntermediateResult-${branchName}-${layerClass}`
@@ -1306,8 +1376,19 @@ function handleFileChange() {
             <FormCheck type="switch" id="form-BN" label="BatchNorm" bind:checked={batchNormActive} on:change={toggleBN} disabled={!openModal} />
           </div>
         </div>
-      </Row>
+        <div class="d-flex justify-content-end"> 
+          {#if selectedModule == "inception" && selectedBranch != undefined}
+            <div class="d-flex">
+              <Input type="select" bind:value={selectedBranch} id="branch-select" class="me-3" style="width: auto;">
+                {#each branches as branch}
+                  <option value={branch}>{branch}</option>
+                {/each}
+              </Input>
+            </div>
+          {/if}
+        </div>
 
+      </Row>
       <Row class="mt-auto">
       </Row>
     </Col>
@@ -1321,17 +1402,6 @@ function handleFileChange() {
       </Row>
       <Row class="m-0" style="width: 100%; height: calc(50vh - 30px); border: 1px solid rgba(225,225,225,255);">
         {#if openModal}
-          <div>
-            {#if selectedModule == "inception"}
-              <div class="d-flex">
-                <Input type="select" bind:value={selectedBranch} id="branch-select" class="me-3" style="width: auto;">
-                  {#each branches as branch}
-                    <option value={branch}>{branch}</option>
-                  {/each}
-                </Input>
-              </div>
-            {/if}
-          </div>
           <div id="module-container">
             <svg id="module-svg">
             </svg>

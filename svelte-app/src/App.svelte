@@ -1,8 +1,10 @@
 <script>
 	import { onMount, tick } from 'svelte';
   import * as d3 from 'd3';
+  import { interpolateRdBu } from 'd3-scale-chromatic';
   import { Container, Input, FormGroup, Label, FormCheck, Button, Row, Col, Modal, ModalBody, ModalHeader, ModalFooter } from 'sveltestrap';
   import Header from './Header.svelte'
+    import { construct_svelte_component } from 'svelte/internal';
     // import { construct_svelte_component } from 'svelte/internal';
 
   //######################################################################//
@@ -21,20 +23,30 @@
 
   let branches = [];
   const imagenetModels = ['alexnet', 'vgg16', 'googlenet', 'resnet18'];
-  let imagenetClasses ={}
+  let imagenetClasses ={};
+
   onMount(async () => {
     const response = await fetch('/imageClasses.json');
     imagenetClasses = await response.json();
     selectedModel = imagenetModels[0];
     selectedClass = "0";
     modelSVG = d3.select('#model-container').select('svg');
-    const zoom = d3.zoom()
+    const modelZoom = d3.zoom()
       .scaleExtent([0.5, 2])  // zoom range
       .on('zoom', (event) => {
         modelSVG.select('g#model-structure').attr('transform', event.transform);
       });
 
-    modelSVG.call(zoom);
+    modelSVG.call(modelZoom);
+
+    const moduleSVG = d3.select('#module-container').select('svg');
+    const moduleZoom = d3.zoom()
+      .scaleExtent([0.5, 2])  // zoom range
+      .on('zoom', (event) => {
+        moduleSVG.select('g#module-structure').attr('transform', event.transform);
+      });
+
+    moduleSVG.call(moduleZoom);
 
     link = d3.linkHorizontal()
     .x(d=>d[0])
@@ -59,8 +71,6 @@
   const moduleWidth = 100;
   const moduleHeight = 400;
 
-  let infoBoxIndex = -1;
-  let top5Index = undefined;
   let isHuggingFaceModel = false;
   let isUserInputImage = false;
   let openModal = false;
@@ -362,14 +372,13 @@
   }
   // Close Detail View 
   function clearDetailView() {
-    infoBoxIndex = -1;
     openModal = false;  
     reluActive = false;
     batchNormActive = false;
     selectedBranch = undefined;
     pathData = [];
     branches = [];
-    d3.select('#module-svg').selectAll("*").remove();
+    d3.select('g#module-structure').selectAll("*").remove();
   }
 
   // Call drawModule functions depending on the type of module
@@ -401,14 +410,14 @@
   }
 
   function drawShortCuts(){
-    const residualLayer = d3.select('#module-svg').selectAll('g.IntermediateResult-add');
+    const residualLayer = d3.select('#module-structure').selectAll('g.IntermediateResult-add');
 
     residualLayer.each(function() {
       const dstIR = d3.select(this);
       const idTokens = dstIR.attr('id').split('-');
       const dstLayerIndex = idTokens[1];
       const dstImageIndex = idTokens[3];
-      const srcIR = d3.select('#module-svg').select(`g#IR-0-0-${dstImageIndex}`);
+      const srcIR = d3.select('#module-structure').select(`g#IR-0-0-${dstImageIndex}`);
 
       const srcGroupTranslate = srcIR.attr('transform').match(/translate\(([^)]+)\)/);
       const srcCoordinates = srcGroupTranslate[1].split(',').map(function(d) { return parseFloat(d); });
@@ -431,7 +440,7 @@
         [rightX, bottomY]
       ];
         
-      d3.select('#module-svg').append('path')
+      d3.select('#module-structure').append('path')
         .attr('d', stepBeforeLine(pathDataBeforeLine))
         .attr('fill', 'none')
         .attr('stroke', 'gray')
@@ -440,7 +449,7 @@
         .attr('stroke-width', 1)
         .style('stroke-opacity', 0.5);
         
-        d3.select('#module-svg').append('path')
+        d3.select('#module-structure').append('path')
         .attr('d', stepAfterLine(pathDataAfterLine))
         .attr('fill', 'none')
         .attr('stroke', 'gray')
@@ -453,7 +462,7 @@
 
   function drawLayerConnections(){
     for(let cursor = moduleLayerDepth; cursor > 0; cursor--){
-      const currLayer = d3.select('#module-svg').selectAll('g').filter(function() { 
+      const currLayer = d3.select('#module-structure').selectAll('g').filter(function() { 
         if(!this.getAttribute('class').includes('IntermediateResult')){
           return false;
         }
@@ -468,7 +477,7 @@
         return isDisplayInline && isCurrentLayerDepth;
       });
 
-      const prevLayer = d3.select('#module-svg').selectAll('g').filter(function() { 
+      const prevLayer = d3.select('#module-structure').selectAll('g').filter(function() { 
         if(!this.getAttribute('class').includes('IntermediateResult')){
             return false;
         }
@@ -504,7 +513,7 @@
       });
     }
     pathData.forEach(path => {
-      d3.select('#module-svg').append('path')
+      d3.select('#module-structure').append('path')
           .attr('d', link({
             source: path.source,
             target: path.target
@@ -519,11 +528,11 @@
   }
 
   function drawInceptionLayerConnections(){
-    const branchLayers = d3.select('#module-svg').select(`g#${selectedBranch}`).selectAll('g').filter(function(){
+    const branchLayers = d3.select('#module-structure').select(`g#${selectedBranch}`).selectAll('g').filter(function(){
       const idTokens = d3.select(this).attr('id').split('-');
       return idTokens[2] == '0' && idTokens[3] == '0';
     });
-    const layers = d3.select('#module-svg').selectAll('g').filter(function(){
+    const layers = d3.select('#module-structure').selectAll('g').filter(function(){
       const idTokens = d3.select(this).attr('id').split('-');
       const isBranchLayer = d3.select(this).attr('class').includes('branch');
       return idTokens[2] == '0' && idTokens[3] == '0' && !isBranchLayer;
@@ -540,12 +549,12 @@
 
     for (let i = 0; i < layerOrder.length - 1; i++) {
       const cursor = layerOrder[i];
-      const currLayer = d3.select('#module-svg').selectAll('g').filter(function() { 
+      const currLayer = d3.select('#module-structure').selectAll('g').filter(function() { 
         const idTokens = d3.select(this).attr('id').split('-');
         return parseInt(idTokens[1]) == cursor && idTokens[2] == '0';
       });
 
-      const prevLayer = d3.select('#module-svg').selectAll('g').filter(function() { 
+      const prevLayer = d3.select('#module-structure').selectAll('g').filter(function() { 
         const idTokens = d3.select(this).attr('id').split('-');
         return parseInt(idTokens[1]) == layerOrder[i + 1] && idTokens[2] == '0';
       });
@@ -571,7 +580,7 @@
       });
     }
     pathData.forEach(path => {
-      d3.select('#module-svg').append('path')
+      d3.select('#module-structure').append('path')
           .attr('d', link({
             source: path.source,
             target: path.target
@@ -588,7 +597,7 @@
 
 
   function setLayerEvents(){
-    const IRs = d3.select('#module-svg').selectAll('g').filter(function() { return this.getAttribute('class').includes('IntermediateResult') });
+    const IRs = d3.select('#module-structure').selectAll('g').filter(function() { return this.getAttribute('class').includes('IntermediateResult') });
     let paths = undefined;
     
     IRs.on('mouseover', function() {
@@ -597,7 +606,7 @@
       const IRIndex = idTokens[3];
       const IRClass = d3.select(this).attr('class');
 
-      paths = d3.select('#module-svg').selectAll('path').filter(function() {
+      paths = d3.select('#module-structure').selectAll('path').filter(function() {
         const edgeIndex = d3.select(this).attr('id').split('-');
         const isSrcLayerPath = (parseInt(edgeIndex[1]) === parseInt(layerIndex)) && (edgeIndex[2] === IRIndex);
         const isDstLayerPath = (edgeIndex[3] === layerIndex) && (edgeIndex[4] === IRIndex);
@@ -629,15 +638,15 @@
   }
 
   function setLinearLayerEvents(moduleLayer){
-    const blocks = d3.select('#module-svg').selectAll('rect.block');
+    const blocks = d3.select('#module-structure').selectAll('rect.block');
     //linear block event handling
     blocks.on('mouseover', function() {
       d3.select(this).style('stroke-width', 3);
     }).on('mouseout',function() {
       d3.select(this).style('stroke-width', 1);
     }).on('click', function(_, __, i) {
-      d3.select('#module-svg').select('g.Prediction-result').remove();
-      d3.select('#module-svg').selectAll('path').remove();
+      d3.select('#module-structure').select('g.Prediction-result').remove();
+      d3.select('#module-structure').selectAll('path').remove();
       pathData = [];
 
       const selectedBlock = d3.select(this);
@@ -647,7 +656,6 @@
       if(linearLayerGroup.attr('class') == 'IntermediateResult-softmax'){
         //Infobox Setting --> 인덱스에 따라서 모델 변경
         const infoBoxIndex = selectedBlock.attr('id').split('-')[1];
-        // infoBoxIndex = parseInt(i);
         
         const translateValues = linearLayerGroup.attr('transform').match(/translate\(([^)]+)\)/)[1];
         // Split the values into an array and convert them to numbers
@@ -671,7 +679,7 @@
                     .range([0, height - padding.top - padding.bottom])
                     .padding(0.1);
         
-        const g = d3.select('svg#module-svg')
+        const g = d3.select('#module-structure')
                     .append('g')
                     .attr('class', 'Prediction-result')
                     .attr('transform', `translate(${groupX + blockX + 150}, ${groupY + blockY})`);
@@ -769,7 +777,7 @@
 
       //select PrevLayer Rects
       if(selectedLayerDepth > 0){
-        const prevBlocks = d3.select('#module-svg').selectAll('g').filter(function(){
+        const prevBlocks = d3.select('#module-structure').selectAll('g').filter(function(){
           if(!this.getAttribute('class').includes('IntermediateResult')){
             return false;
           }
@@ -787,7 +795,7 @@
       }
       //select NextLayer Rects
       if(selectedLayerDepth < moduleLayerDepth){
-        const nextBlocks = d3.select('#module-svg').selectAll('g').filter(function(){
+        const nextBlocks = d3.select('#module-structure').selectAll('g').filter(function(){
           if(!this.getAttribute('class').includes('IntermediateResult')){
             return false;
           }
@@ -805,7 +813,7 @@
       }
 
       pathData.forEach(path => {
-      d3.select('#module-svg').append('path')
+      d3.select('#module-structure').append('path')
           .attr('d', link({
             source: path.source,
             target: path.target
@@ -1009,7 +1017,7 @@
     let branchName = '';
     let hiddenLayerCount = 0;
     let visibleLayerIndex = 0;
-    const detailSVG = d3.select('#module-svg');
+    const detailSVG = d3.select('#module-structure');
     let branchDepth = 0;
 
     moduleLayers['branches'].forEach((branch, branchIndex) => {
@@ -1079,7 +1087,7 @@
                                     .filter(function() {return window.getComputedStyle(this).display === 'inline';})
                                     .size() / 8;
 
-      d3.select('#module-svg').selectAll('g.IntermediateResult-cat').each(function(){
+      d3.select('#module-structure').selectAll('g.IntermediateResult-cat').each(function(){
         const currentImageIndex = d3.select(this).attr('id').split('-')[3];
         const newImageIndex = `IR-${numLayerCurrentBranch + 1}-0-${currentImageIndex}`
         d3.select(this).attr('id', newImageIndex);
@@ -1087,7 +1095,7 @@
 
       moduleLayerDepth = numLayerCurrentBranch + 1;
 
-      d3.select('#module-svg').selectAll('path').remove();
+      d3.select('#module-structure').selectAll('path').remove();
       pathData = [];
       drawInceptionLayerConnections();
     }
@@ -1097,19 +1105,15 @@
     updateInceptionBranch();
   }
 
-  function drawFlatten3D(layer, visibleLayerIndex, layerIndex, x, y, display = 'inline', layerClass){
-    const flatImages = layer.flat(3);
-    drawLinear(flatImages, visibleLayerIndex, layerIndex, x, y, display, layerClass);
-  }
-
   function drawLinear(layer, visibleLayerIndex, layerIndex, x, y, display = 'inline', layerClass){
     const [max, min] = getLayerMaxMin(layer);
     const boundaryValue = Math.max(Math.abs(min), Math.abs(max));
     const colorScale = d3.scaleLinear()
     .domain([-boundaryValue, boundaryValue])
-    .range(['red', 'blue']); 
+    .interpolate(d3.interpolate)
+    .range([interpolateRdBu(0), interpolateRdBu(0.5), interpolateRdBu(1)]);
 
-    const detailSVG = d3.select('#module-svg');
+    const detailSVG = d3.select('#module-structure');
     const linearLayerGroup = detailSVG.append('g')
                               .attr('class', `IntermediateResult-${layerClass}`)
                               .attr('id', `IR-${visibleLayerIndex}-${layerIndex}-0`)
@@ -1140,6 +1144,8 @@
     const requiredHeight = Math.max(currentHeight, y + layerHeight);
 
     updateSVGSize(requiredWidth, requiredHeight);
+
+    drawLegend(x + (linearRectWidth - imageWidth)/2 , y + linearRectHeight * layer.length + offsetY, boundaryValue, display);
   }
 
   // Draw a layer which is contains IR results (Image or Linear)
@@ -1147,9 +1153,14 @@
     // Color Sacle of the layer images
     const [max, min] = getLayerMaxMin3D(layerImages);
     const boundaryValue = Math.max(Math.abs(min), Math.abs(max));
+    
+    console.log(max);
+    console.log(min);
+
     const colorScale = d3.scaleLinear()
-    .domain([-boundaryValue, boundaryValue])
-    .range(['red', 'blue']); 
+    .domain([-boundaryValue, 0, boundaryValue])
+    .interpolate(d3.interpolate)
+    .range([interpolateRdBu(0), interpolateRdBu(0.5), interpolateRdBu(1)]);
 
     let ImageX = 0;
     let ImageY = 0;
@@ -1161,7 +1172,7 @@
 
 
     // If layers over the svg size, update svg size.
-    const detailSVG = d3.select('#module-svg');
+    const detailSVG = d3.select('#module-structure');
     const imageSize = 133;
     const currentWidth = detailSVG.attr('width');
     const currentHeight = detailSVG.attr('height');
@@ -1169,10 +1180,56 @@
     const requiredHeight = Math.max(currentHeight, ImageY + imageSize);
 
     updateSVGSize(requiredWidth, requiredHeight);
-
-    //TODO(YSKIM): Make Legend 
+    
+    drawLegend(ImageX, ImageY + imageHeight + offsetY, boundaryValue, display);
   }
 
+  function drawLegend(x, y, boundaryValue, display){
+    const legendHeight = 10;
+    const legendWidth = 133;
+
+    const legendGroup = d3.select('#module-structure').append("g")
+      .attr('class', 'legend-group')
+      .attr("transform", `translate(${x}, ${y})`)
+      .style('display', display);
+
+    const gradient = legendGroup.append("defs")
+      .append("linearGradient")
+      .attr("id", "linear-gradient")
+      .attr("x1", "0%")
+      .attr("x2", "100%")
+      .attr("y1", "0%")
+      .attr("y2", "0%");
+
+    gradient.append("stop")
+      .attr("offset", "0%")
+      .attr("stop-color", interpolateRdBu(0));
+
+    gradient.append("stop")
+      .attr("offset", "50%")
+      .attr("stop-color", interpolateRdBu(0.5));
+
+    gradient.append("stop")
+      .attr("offset", "100%")
+      .attr("stop-color", interpolateRdBu(1));
+
+    legendGroup.append("rect")
+      .attr("width", legendWidth)
+      .attr("height", legendHeight)
+      .style("fill", "url(#linear-gradient)");
+
+    legendGroup.append("text")
+      .attr("x", 0)
+      .attr("y", legendHeight + 15)
+      .attr("text-anchor", "start")
+      .text((-boundaryValue).toFixed(2));
+
+    legendGroup.append("text")
+      .attr("x", legendWidth)
+      .attr("y", legendHeight + 15)
+      .attr("text-anchor", "end")
+      .text(boundaryValue.toFixed(2));
+}
 
   //Draw an Image
   function drawImage(image, visibleLayerIndex, layerIndex, imageIndex, colorScale, x, y, display, layerClass, branchName = 'none') {
@@ -1183,10 +1240,10 @@
     // const strokeWidth = 1;
     const strokeWidth = 1;
     const className = (branchName === 'none') ? `IntermediateResult-${layerClass}`:  `IntermediateResult-${branchName}-${layerClass}`
-    let detailSVG = d3.select('#module-svg');
+    let detailSVG = d3.select('#module-structure');
     
     if(branchName !== 'none'){
-      detailSVG = d3.select('#module-svg').select(`g#${branchName}`);
+      detailSVG = d3.select('#module-structure').select(`g#${branchName}`);
     }    
     const imageCells = detailSVG.append('g')
     .attr('class', className)
@@ -1231,8 +1288,6 @@
         .style('stroke-opacity', 1);
     }
   }
-
-
   function getLayerMaxMin3D(layerImages) {
       let flattenedData = layerImages.flat(Infinity);
       const max = flattenedData.reduce((a, b) => Math.max(a, b));
@@ -1247,10 +1302,8 @@
 
       return [max,min];
   }
-
-
   function toggleReLU(){
-    let detailSVG = d3.select('#module-svg');
+    let detailSVG = d3.select('#module-structure');
     if(typeof selectedBranch !== 'undefined'){
       detailSVG = d3.select(`g#${selectedBranch}`);
     }
@@ -1276,10 +1329,10 @@
     });
   }
   function toggleBN(){
-    let detailSVG = d3.select('#module-svg');
+    let detailSVG = d3.select('#module-structure');
     let bnClassSelector = 'g.IntermediateResult-bn';
     if(typeof selectedBranch !== 'undefined'){
-      detailSVG = d3.select('#module-svg').select(`g#${selectedBranch}`);
+      detailSVG = d3.select('#module-structure').select(`g#${selectedBranch}`);
       bnClassSelector = `g.IntermediateResult-${selectedBranch}-bn`;
     }
     detailSVG.selectAll(bnClassSelector).each(function() {
@@ -1311,7 +1364,7 @@ function handleFileChange() {
 
 <style>
   #module-container {
-    overflow: auto;
+    overflow: hidden;
     height: 100%;
     width: 100%;
   }
@@ -1321,19 +1374,30 @@ function handleFileChange() {
   #model-svg:active {
     cursor: grabbing;
   }
+  #module-svg {
+    cursor: grab;
+  }
+  #module-svg:active {
+    cursor: grabbing;
+  }
+
+  
 </style>
 
 <Header/>
 
 <Container fluid>
   <Row class="h-100" style="height: calc(100vh - 60px);">
-    <Col class="d-flex flex-column" style="flex: 0 0 400px; max-width: 400px; height: calc(100vh - 60px); overflow-y: auto; border: 1px solid rgba(225,225,225,255); background-color: rgba(249,249,249,255);">
-      <Row class="d-flex align-items-center" style="padding: 2.5px 10px;">
+    <Col class="d-flex flex-column" style="flex: 0 0 400px; max-width: 400px; height: calc(100vh - 60px); overflow-y: auto; border: 1px solid rgba(225,225,225,255); background-color: rgba(249,249,249,255); padding: 20px; font-family: Arial, sans-serif;">
+      <Row style="margin-bottom: 20px; display: flex; align-items: center; justify-content: flex-end;
+      width: 100%;">
         <FormCheck type="switch" id="form-model" label="Hugging Face Model URL" bind:checked={isHuggingFaceModel} />
       </Row>
-      <Row class="d-flex align-items-center" style="padding: 2.5px 10px;">
-        <FormGroup class="d-flex align-items-center mb-0">
+      <Row style="margin-bottom: 20px; display: flex; align-items: center;">
+        <FormGroup style="flex: 1; max-width: 150px; margin-bottom: 0;">
           <Label for="model-select" class="me-2 mb-0">Model</Label>
+        </FormGroup>
+        <FormGroup style="flex: 2; margin-bottom: 0;">
           <Input type="select" bind:value={selectedModel} id="model-select" class="me-3" disabled={isHuggingFaceModel}>
             {#each imagenetModels as modelName}
               <option value={modelName}>{modelName}</option>
@@ -1341,18 +1405,22 @@ function handleFileChange() {
           </Input>
         </FormGroup>
       </Row>
-      <Row class="d-flex align-items-center" style="padding: 2.5px 10px;">
-        <FormGroup class="d-flex align-items-center mb-0">
+      <Row style="margin-bottom: 20px; display: flex; align-items: center;">
+        <FormGroup style="flex: 1; max-width: 150px; margin-bottom: 0;">
           <Label for="HuggingFace-url" class="me-2 mb-0">URL</Label>
+        </FormGroup>
+        <FormGroup style="flex: 2; margin-bottom: 0;">
           <Input type="text" id="model-url" placeholder="Type 'microsoft/resnet-18' here" class="me-3" disabled={!isHuggingFaceModel} />
         </FormGroup>
       </Row>
-      <Row class="d-flex align-items-center" style="padding: 2.5px 10px;">
+      <Row style="margin-bottom: 20px; display: flex; align-items: center; justify-content: flex-end; width: 100%;">
         <FormCheck type="switch" id="form-model" label="User Image Input" bind:checked={isUserInputImage} />
       </Row>
-      <Row class="d-flex align-items-center" style="padding: 2.5px 10px;">
-        <FormGroup class="d-flex align-items-center mb-0">
+      <Row style="margin-bottom: 20px; display: flex; align-items: center;">
+        <FormGroup style="flex: 1; max-width: 150px; margin-bottom: 0;">
           <Label for="class-select" class="me-2 mb-0">Class</Label>
+        </FormGroup>
+        <FormGroup style="flex: 2; margin-bottom: 0;">
           <Input type="select" bind:value={selectedClass} id="class-select" class="me-3" disabled={isUserInputImage}>
             {#each Object.entries(imagenetClasses) as [index, className]}
               <option value={index}>{index}: {className}</option>
@@ -1361,17 +1429,21 @@ function handleFileChange() {
         </FormGroup>
       </Row>
 
-      <Row class="d-flex align-items-center">
-        <FormGroup class="d-flex align-items-center mb-0">
+      <Row style="margin-bottom: 20px; display: flex; align-items: center;">
+        <FormGroup style="flex: 1; max-width: 150px; margin-bottom: 0;">
           <Label for="class-select" class="me-2 mb-0">Image Input</Label>
+        </FormGroup>
+        <FormGroup style="flex: 2; margin-bottom: 0;">
           <Input type="file" id="image-upload" accept="image/*" on:change={handleFileChange} disabled={!isUserInputImage} />
         </FormGroup>
       </Row>
     
-      <Row class="d-flex align-items-center">
-        <Button color="secondary" on:click={loadModelView}>Load</Button>
+      <Row style="margin-bottom: 20px; display: flex; align-items: center;">
+        <Button color="secondary" style="width: 100%; margin-top: 10px;" on:click={loadModelView}>Load</Button>
+      </Row>
+      <Row style="margin-bottom: 20px; display: flex; align-items: center;">
         <div class="d-flex justify-content-end">
-          <div class="switch-container d-flex align-items-center">
+          <div class="switch-container d-flex align-items-center" style="display: flex; gap: 10px;">
             <FormCheck type="switch" id="form-ReLU" label="ReLU" bind:checked={reluActive} on:change={toggleReLU} disabled={!openModal} />
             <FormCheck type="switch" id="form-BN" label="BatchNorm" bind:checked={batchNormActive} on:change={toggleBN} disabled={!openModal} />
           </div>
@@ -1387,7 +1459,6 @@ function handleFileChange() {
             </div>
           {/if}
         </div>
-
       </Row>
       <Row class="mt-auto">
       </Row>
@@ -1401,12 +1472,11 @@ function handleFileChange() {
       </div>
       </Row>
       <Row class="m-0" style="width: 100%; height: calc(50vh - 30px); border: 1px solid rgba(225,225,225,255);">
-        {#if openModal}
           <div id="module-container">
-            <svg id="module-svg">
+            <svg id="module-svg" style="width: 100%; height: 100%; display: block; min-width: 100%; min-height: 100%;">
+              <g id="module-structure"></g>
             </svg>
           </div>
-        {/if}
       </Row>
     </Col>
   </Row>

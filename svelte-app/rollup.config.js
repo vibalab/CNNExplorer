@@ -5,6 +5,9 @@ import terser from '@rollup/plugin-terser';
 import resolve from '@rollup/plugin-node-resolve';
 import livereload from 'rollup-plugin-livereload';
 import css from 'rollup-plugin-css-only';
+import svelteConfig from './svelte.config.js'; // svelte.config.js 파일 가져오기
+import copy from 'rollup-plugin-copy';
+
 
 const production = !process.env.ROLLUP_WATCH;
 
@@ -39,9 +42,11 @@ export default {
 	},
 	plugins: [
 		svelte({
+			...svelteConfig, // svelteConfig를 여기에서 사용
 			compilerOptions: {
 				// enable run-time checks when not in production
-				dev: !production
+				dev: !production,
+				...svelteConfig.compilerOptions // 추가적인 옵션 병합
 			}
 		}),
 		// we'll extract any component CSS out into
@@ -70,7 +75,13 @@ export default {
 
 		// If we're building for production (npm run build
 		// instead of npm run dev), minify
-		production && terser()
+		production && terser(),
+		copy({
+			targets: [
+				{ src: 'node_modules/bootstrap/dist/css/bootstrap.min.css', dest: 'public/build' },
+				{ src: 'node_modules/bootstrap/dist/css/bootstrap.min.css.map', dest: 'public/build' }
+			]
+		})
 	],
 	watch: {
 		clearScreen: false

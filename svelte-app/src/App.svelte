@@ -4,7 +4,9 @@
   import { interpolateRdBu } from 'd3-scale-chromatic';
   import { Container, Input, FormGroup, Label, FormCheck, Button, Row, Col, Modal, ModalBody, ModalHeader, ModalFooter } from 'sveltestrap';
   import Header from './Header.svelte'
-    import { construct_svelte_component } from 'svelte/internal';
+    // import { construct_svelte_component } from 'svelte/internal';
+  // import 'bootstrap/dist/css/bootstrap.min.css';
+
     // import { construct_svelte_component } from 'svelte/internal';
 
   //######################################################################//
@@ -1109,7 +1111,7 @@
     const [max, min] = getLayerMaxMin(layer);
     const boundaryValue = Math.max(Math.abs(min), Math.abs(max));
     const colorScale = d3.scaleLinear()
-    .domain([-boundaryValue, boundaryValue])
+    .domain([-boundaryValue, 0, boundaryValue])
     .interpolate(d3.interpolate)
     .range([interpolateRdBu(0), interpolateRdBu(0.5), interpolateRdBu(1)]);
 
@@ -1389,8 +1391,7 @@ function handleFileChange() {
 <Container fluid>
   <Row class="h-100" style="height: calc(100vh - 60px);">
     <Col class="d-flex flex-column" style="flex: 0 0 400px; max-width: 400px; height: calc(100vh - 60px); overflow-y: auto; border: 1px solid rgba(225,225,225,255); background-color: rgba(249,249,249,255); padding: 20px; font-family: Arial, sans-serif;">
-      <Row style="margin-bottom: 20px; display: flex; align-items: center; justify-content: flex-end;
-      width: 100%;">
+      <Row style="margin-bottom: 20px; display: flex; align-items: center; justify-content: flex-end; width: 100%;">
         <FormCheck type="switch" id="form-model" label="Hugging Face Model URL" bind:checked={isHuggingFaceModel} />
       </Row>
       <Row style="margin-bottom: 20px; display: flex; align-items: center;">
@@ -1439,7 +1440,9 @@ function handleFileChange() {
       </Row>
     
       <Row style="margin-bottom: 20px; display: flex; align-items: center;">
-        <Button color="secondary" style="width: 100%; margin-top: 10px;" on:click={loadModelView}>Load</Button>
+        <Button class="text-bg-primary" style="width: 100%; margin-top: 10px;" on:click={loadModelView}>
+          Load Model
+        </Button>
       </Row>
       <Row style="margin-bottom: 20px; display: flex; align-items: center;">
         <div class="d-flex justify-content-end">
@@ -1481,34 +1484,3 @@ function handleFileChange() {
     </Col>
   </Row>
 </Container>
-<!-- 
-<Modal isOpen={openModal} toggle={closeDetailView} size='lg'>
-  <ModalHeader toggle={closeDetailView}>
-    <p>{selectedModel} detail view for {selectedClass} class - {selectedModule} module</p>
-    {#if selectedModule == "inception"}
-      <div class="d-flex">
-        <Input type="select" bind:value={selectedBranch} id="branch-select" class="me-3" style="width: auto;">
-          {#each branches as branch}
-            <option value={branch}>{branch}</option>
-          {/each}
-        </Input>
-      </div>
-    {/if}
-  </ModalHeader>
-  <ModalBody>
-    <div id="module-container">
-      <svg id="module-svg">
-      </svg>
-    </div>
-  </ModalBody>
-  <ModalFooter class="d-flex justify-content-end">
-    <div class="switch-container d-flex align-items-center">
-      <FormCheck type="switch" id="form-ReLU" label="ReLU" bind:checked={reluActive} on:change={toggleReLU} />
-      <FormCheck type="switch" id="form-BN" label="BatchNorm" bind:checked={batchNormActive} on:change={toggleBN} />
-    </div>
-  </ModalFooter>
-</Modal> -->
-
-<!-- <div id='overview'>
-	<Overview />
-</div> -->

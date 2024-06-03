@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 import torchvision
 import torchvision.models as models
 import torchvision.transforms as transforms
@@ -14,11 +15,17 @@ from PIL import Image
 #
 # Load models
 #
+
 def ReLU_inplace_to_False(module):
+    # https://stackoverflow.com/questions/74124725/setting-relu-inplace-to-false
     for layer in module._modules.values():
-        if hasattr(layer, "inplace"):
+        if isinstance(layer, nn.ReLU):
             layer.inplace = False
         ReLU_inplace_to_False(layer)
+    #for layer in module._modules.values():
+    #    if hasattr(layer, "inplace"):
+    #        layer.inplace = False
+    #    ReLU_inplace_to_False(layer)
 
 def load_torchvision_model(model_name, numbering):
     if model_name == "googlenet":
@@ -49,6 +56,8 @@ def load_torchvision_model(model_name, numbering):
 def load_model(model_name):
     if model_name in dir(models):
         model, processor = load_torchvision_model(model_name, 0)
+        model.eval()
+        ReLU_inplace_to_False(model)
         return model, processor, False
 
     is_transformers = True

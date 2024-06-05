@@ -25,10 +25,6 @@ def hook_fn(m, i, o):
         if node.layer == m:
             node.input = i[0].squeeze(0).detach().clone().cpu().numpy()
             node.output = o[0].detach().clone().cpu().numpy()
-            print(node)
-            breakpoint()
-            print(node.input[0][0])
-            print(node.output[0][0])
 
 def check_hook(module):
     if not hasattr(module, "_modules"):
@@ -226,7 +222,6 @@ def main(log_dir, data_dir, model_name):
             node.input = node.input[node.input_index].tolist()
             node.input_index = node.input_index.tolist()
         if "output" in dir(node) and "output_index" in dir(node):
-            breakpoint()
             node.output_index = np.array(node.output_index)
             node.output = node.output[node.output_index].tolist()
             node.output_index = node.output_index.tolist()
@@ -297,6 +292,9 @@ def main(log_dir, data_dir, model_name):
                 if isinstance(layer[k], np.ndarray):
                     layer[k] = layer[k].tolist()
 
+    # remove empty module
+    info = [m for m in info if sum([len(b) for b in m["branches"]]) + len(m["layers"]) > 0]
+
     # print for test
     for module in info:
         for branch_list in module["branches"]:
@@ -308,8 +306,7 @@ def main(log_dir, data_dir, model_name):
             print(layer['layer_type'])
             if 'input_index' in layer: print(layer['input_index'][:5])
             if 'output_index' in layer: print(layer['output_index'][:5])
-
-        print()
+        print("--")
 
     with open(os.path.join(log_dir, model_name.replace("/","__")+'_info.json'), "w") as f:
         json.dump(info, f)
@@ -361,7 +358,7 @@ if __name__ == "__main__":
 
     # for model in ["timm/inception_v3.tv_in1k"]:
     # for model in ["timm/vgg11.tv_in1k"]:
-    for model in ["resnet18"]:
+    for model in ["googlenet"]:
     #for model in tv_models:
         for index, data in tqdm(enumerate(imagenet_data)):
             #label = IMAGENET_CLASSES[index]

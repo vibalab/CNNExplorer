@@ -1390,39 +1390,43 @@ function handleFileChange() {
 
 <Container fluid>
   <Row class="h-100" style="height: calc(100vh - 60px);">
-    <Col class="d-flex flex-column" style="flex: 0 0 400px; max-width: 400px; height: calc(100vh - 60px); overflow-y: auto; border: 1px solid rgba(225,225,225,255); background-color: rgba(249,249,249,255); padding: 20px; font-family: Arial, sans-serif;">
-      <Row style="margin-bottom: 20px; display: flex; align-items: center; justify-content: flex-end; width: 100%;">
+    <Col style="max-width: 260px; height: calc(100vh - 60px); overflow-y: auto; border: 1px solid rgba(225,225,225,255); background-color: rgba(249,249,249,255); padding: 10px; font-family: Arial, sans-serif;">
+      <Row style="margin-bottom: 5px; align-items: center; justify-content: flex-end; width: 100%;">
         <FormCheck type="switch" id="form-model" label="Hugging Face Model URL" bind:checked={isHuggingFaceModel} />
       </Row>
-      <Row style="margin-bottom: 20px; display: flex; align-items: center;">
-        <FormGroup style="flex: 1; max-width: 150px; margin-bottom: 0;">
-          <Label for="model-select" class="me-2 mb-0">Model</Label>
+      <Row style="margin-bottom: 5px; align-items: center;">
+        <Col>
+        <FormGroup>
+          <Label for="model-select">Model</Label>
         </FormGroup>
-        <FormGroup style="flex: 2; margin-bottom: 0;">
-          <Input type="select" bind:value={selectedModel} id="model-select" class="me-3" disabled={isHuggingFaceModel}>
+        </Col>
+        <Col>
+        <FormGroup>
+          <Input type="select" bind:value={selectedModel} id="model-select" disabled={isHuggingFaceModel}>
             {#each imagenetModels as modelName}
               <option value={modelName}>{modelName}</option>
             {/each}
           </Input>
         </FormGroup>
+      </Col>
       </Row>
-      <Row style="margin-bottom: 20px; display: flex; align-items: center;">
-        <FormGroup style="flex: 1; max-width: 150px; margin-bottom: 0;">
+      <Row style="margin-bottom: 5px; align-items: center;">
+        <FormGroup>
           <Label for="HuggingFace-url" class="me-2 mb-0">URL</Label>
         </FormGroup>
-        <FormGroup style="flex: 2; margin-bottom: 0;">
-          <Input type="text" id="model-url" placeholder="Type 'microsoft/resnet-18' here" class="me-3" disabled={!isHuggingFaceModel} />
+        <FormGroup>
+          <Input type="text" id="model-url" placeholder="Type 'microsoft/resnet-18' here" disabled={!isHuggingFaceModel} />
         </FormGroup>
       </Row>
-      <Row style="margin-bottom: 20px; display: flex; align-items: center; justify-content: flex-end; width: 100%;">
+      <Row style="margin-bottom: 5px; align-items: center; justify-content: flex-end; width: 100%;">
         <FormCheck type="switch" id="form-model" label="User Image Input" bind:checked={isUserInputImage} />
       </Row>
-      <Row style="margin-bottom: 20px; display: flex; align-items: center;">
-        <FormGroup style="flex: 1; max-width: 150px; margin-bottom: 0;">
-          <Label for="class-select" class="me-2 mb-0">Class</Label>
+      <Row style="margin-bottom: 5px; align-items: center;">
+        <FormGroup>
+          <Label for="class-select">Class</Label>
         </FormGroup>
-        <FormGroup style="flex: 2; margin-bottom: 0;">
-          <Input type="select" bind:value={selectedClass} id="class-select" class="me-3" disabled={isUserInputImage}>
+        <FormGroup>
+          <Input type="select" bind:value={selectedClass} id="class-select" disabled={isUserInputImage}>
             {#each Object.entries(imagenetClasses) as [index, className]}
               <option value={index}>{index}: {className}</option>
             {/each}
@@ -1430,31 +1434,33 @@ function handleFileChange() {
         </FormGroup>
       </Row>
 
-      <Row style="margin-bottom: 20px; display: flex; align-items: center;">
-        <FormGroup style="flex: 1; max-width: 150px; margin-bottom: 0;">
+      <Row style="margin-bottom: 5px; align-items: center;">
+        <FormGroup>
           <Label for="class-select" class="me-2 mb-0">Image Input</Label>
         </FormGroup>
-        <FormGroup style="flex: 2; margin-bottom: 0;">
+        <FormGroup>
           <Input type="file" id="image-upload" accept="image/*" on:change={handleFileChange} disabled={!isUserInputImage} />
         </FormGroup>
       </Row>
     
-      <Row style="margin-bottom: 20px; display: flex; align-items: center;">
+      <Row style="margin-bottom: 5px; align-items: center;">
         <Button class="text-bg-primary" style="width: 100%; margin-top: 10px;" on:click={loadModelView}>
           Load Model
         </Button>
       </Row>
-      <Row style="margin-bottom: 20px; display: flex; align-items: center;">
-        <div class="d-flex justify-content-end">
-          <div class="switch-container d-flex align-items-center" style="display: flex; gap: 10px;">
+      <Row style="margin-bottom: 5px; align-items: center;">
+        <div class="justify-content-end">
+          <div class="switch-container align-items-center" style="gap: 10px;">
             <FormCheck type="switch" id="form-ReLU" label="ReLU" bind:checked={reluActive} on:change={toggleReLU} disabled={!openModal} />
+          </div>
+          <div class="switch-container align-items-center" style="gap: 10px;">
             <FormCheck type="switch" id="form-BN" label="BatchNorm" bind:checked={batchNormActive} on:change={toggleBN} disabled={!openModal} />
           </div>
         </div>
-        <div class="d-flex justify-content-end"> 
+        <div class="justify-content-end"> 
           {#if selectedModule == "inception" && selectedBranch != undefined}
-            <div class="d-flex">
-              <Input type="select" bind:value={selectedBranch} id="branch-select" class="me-3" style="width: auto;">
+            <div>
+              <Input type="select" bind:value={selectedBranch} id="branch-select" style="width: auto;">
                 {#each branches as branch}
                   <option value={branch}>{branch}</option>
                 {/each}

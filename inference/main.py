@@ -359,7 +359,8 @@ if __name__ == "__main__":
     # for model in ["timm/inception_v3.tv_in1k"]:
     # for model in ["timm/vgg11.tv_in1k"]:
     # for model in ["resnet18"]:
-    for model in tv_models:
+    # for model in tv_models:
+    for model in ["microsoft/resnet-18"]:
         for index, data in tqdm(enumerate(imagenet_data)):
             #label = IMAGENET_CLASSES[index]
             main(f"./svelte-app/public/output/{index}/", data, model)

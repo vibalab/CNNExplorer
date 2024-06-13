@@ -26,6 +26,8 @@
   let moduleColorScale = undefined;
   let layerMax = undefined;
   let layerMin = undefined;
+  let currentModule = undefined;
+  let previousSelectedBranch = undefined;
 
   let branches = [];
   const imagenetModels = ['alexnet', 'vgg16', 'googlenet', 'resnet18'];
@@ -362,7 +364,7 @@
       if (moduleName === 'conv'){ return moduleColorScale(0.7); }
       else if (moduleName === 'residual'){ return moduleColorScale(0.6); }
       else if (moduleName === 'inception'){ return moduleColorScale(0.5); }
-      else if (moduleName === 'avgpool'){ return moduleColorScale(0.4);}
+      else if (moduleName.includes('pool')){ return moduleColorScale(0.4);}
       else if (moduleName === 'linear'){ return moduleColorScale(0.3); }
     }
   }
@@ -397,7 +399,7 @@
       setLayerEvents();
     }
     else if (selectedModuleInfo['type'] === 'avgpool'){
-      drawAvgpoolModuleDetail(selectedModuleInfo['layers']);
+      drawPoolModuleDetail(selectedModuleInfo['layers']);
       drawLayerConnections();
       setLayerEvents();
     }
@@ -412,7 +414,9 @@
       setLayerEvents();
     }
     else if (selectedModuleInfo['type'] === 'inception'){
-      drawInceptionModuleDetail(selectedModuleInfo);
+      // drawInceptionModuleDetail(selectedModuleInfo);
+      currentModule = selectedModuleInfo;
+      selectedBranch = 'branch1';
       setLayerEvents();
     }
   }
@@ -924,30 +928,47 @@
   }
 
   // Draw Avgpool Module
-  function drawAvgpoolModuleDetail(moduleLayers){
+  function drawPoolModuleDetail(moduleLayers){
+    let visibleLayerIndex = 0;
+    let hiddenLayerCount = 0;
+    let x;
+    let y;
     moduleLayers.forEach((layer, layerIndex) => {
       //Input Layer 
       if(layerIndex === 0){
-
-        const inputX = moduleXPadding + (layerIndex) * (imageWidth + offsetX);
+        const inputX = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
         const inputY = moduleYPadding + (offsetY);
-        console.log(`layerIndex: ${layerIndex}`)
-        drawLayer(layer['input'], 0, 0, inputX, inputY, 'inline', 'input');
+        drawLayer(layer['input'], visibleLayerIndex, hiddenLayerCount, inputX, inputY, 'inline', 'input');
 
-        const x = moduleXPadding + (layerIndex + 1) * (imageWidth + offsetX);
-        const y = moduleYPadding + (offsetY)
-        drawLayer(layer['output'], layerIndex + 1, layerIndex, x, y, 'inline', layer['layer_type']);
-
-        moduleLayerDepth = layerIndex + 1;
+        visibleLayerIndex++;
+        x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
+        y = moduleYPadding + (offsetY);
+        drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['layer_type']);
       }
-      else if(layer['layer_type'] != 'flatten'){
-        // Other Layers (Pool)
-        const x = moduleXPadding + (layerIndex + 1) * (imageWidth + offsetX);
-        const y = moduleYPadding + (offsetY)
-        drawLayer(layer['output'], layerIndex + 1, layerIndex, x, y, 'inline', layer['layer_type']);
-        moduleLayerDepth = layerIndex + 1;
+      //ReLU & BatchNorm Layer
+      else if(layer['layer_type'] === 'relu' || layer['layer_type'] === 'bn'){
+        hiddenLayerCount++;
+        x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
+        y = moduleYPadding + (offsetY)
+        drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'none', layer['layer_type']);
+      }
+      //Other Layers (Conv, Pool)
+      else if(layer['layer_type'] === 'conv' || layer['layer_type'].includes('pool')){
+        visibleLayerIndex++;
+        hiddenLayerCount = 0;
+        x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
+        y = moduleYPadding + (offsetY);
+        drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['layer_type']);
+      }
+      else if(layer['layer_type'] === 'flatten'){
+        visibleLayerIndex++;
+        hiddenLayerCount = 0;
+        x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
+        y = moduleYPadding + (offsetY);
+        drawLinear(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['layer_type']);
       }
     });
+    moduleLayerDepth = visibleLayerIndex;
   }
   
   // Draw Linear Module
@@ -960,7 +981,7 @@
       if(layerIndex === 0){
         const x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
         const y = moduleYPadding + (offsetY);
-        drawLinear(layer['input'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['layer_type']);
+        drawLinear(layer['input'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', 'input');
       }
       //Last Layer contains Top-10 prediction labes (output_index) and probability (output)
       if(layerIndex === (moduleLayers.length - 1)){
@@ -1083,7 +1104,10 @@
         drawLayer(layer['output'], visibleLayerIndex, hiddenLayerCount, layerX, layerY, 'none', layer['layer_type']);
       }
     });
-    selectedBranch = 'branch1';
+    // if(selectedBranch == undefined){
+    //   selectedBranch = 'branch1';
+    // }
+    previousSelectedBranch = selectedBranch;
   }
 
   function updateInceptionBranch(){
@@ -1128,11 +1152,62 @@
     }
   }
 
-  $: if(selectedBranch) {
+  $: if(selectedBranch && selectedBranch !== previousSelectedBranch) {
     reluActive = false;
     batchNormActive = false;
+    d3.select('g#module-structure').selectAll("*").remove();
+    drawInceptionModuleDetail(currentModule);
     updateInceptionBranch();
   }
+/* 
+  function drawFlatten(layerImages, visibleLayerIndex, layerIndex, layerX, layerY, display = 'inline', layerClass){
+    // Color Sacle of the layer images
+    [layerMax, layerMin] = getLayerMaxMin3D(layerImages);
+    const boundaryValue = Math.max(Math.abs(layerMin), Math.abs(layerMax));
+    console.log('flatten')
+    
+    const colorScale = d3.scaleLinear()
+    .domain([-boundaryValue, 0, boundaryValue])
+    .interpolate(d3.interpolate)
+    .range([interpolateRdBu(0), interpolateRdBu(0.5), interpolateRdBu(1)]);
+
+    let ImageX = 0;
+    let ImageY = 0;
+    const detailSVG = d3.select('#module-structure');
+    const linearLayerGroup = detailSVG.append('g')
+                              .attr('class', `IntermediateResult-${layerClass}`)
+                              .attr('id', `IR-${visibleLayerIndex}-${layerIndex}-0`)
+                              .attr('transform', `translate(${layerX}, ${layerY})`)
+                              .style('display', display);
+                              const layerHeight = imageHeight;
+    const layerWidth = 40;
+    const linearRectWidth = layerWidth;
+    layerImages.forEach((image, imageIndex) => {
+      let flatImage = undefined;
+      if(Array.isArray(image)){
+        flatImage = image.flat();
+      }
+      ImageX = layerX;
+      ImageY = layerY + (imageHeight + offsetY) * (imageIndex);
+      flatImage.forEach((value, blockIndex) =>{
+        const linearRectHeight = layerHeight / flatImage.length;
+
+
+        linearLayerGroup.append('rect')
+        .attr('x', 0)
+        .attr('y', linearRectHeight * blockIndex)
+        .attr('width', linearRectWidth)
+        .attr('height', linearRectHeight)
+        .attr('class','block')
+        .attr('id', `block-${imageIndex}-${blockIndex}`)
+        .style('fill', colorScale(value))
+        .style('stroke', 'black')
+        .style('stroke-opacity', 0.5);
+      });
+
+    });    
+    drawLegend(ImageX + (linearRectWidth) / 2, ImageY, boundaryValue, visibleLayerIndex, layerIndex, layerClass, display);
+  } */
 
   function drawLinear(layer, visibleLayerIndex, layerIndex, x, y, display = 'inline', layerClass){
     if(layerClass != 'relu'){
@@ -1155,6 +1230,8 @@
     const layerWidth = 40;
     const linearRectHeight = layerHeight / layer.length;
     const linearRectWidth = layerWidth;
+
+    writeLayerName(x + layerWidth / 2, y - offsetY, visibleLayerIndex, layerIndex, layerClass, display);
 
     layer.forEach((value, index) => {
       linearLayerGroup.append('rect')
@@ -1192,6 +1269,8 @@
     .interpolate(d3.interpolate)
     .range([interpolateRdBu(0), interpolateRdBu(0.5), interpolateRdBu(1)]);
 
+    writeLayerName(layerX + imageWidth / 2, layerY - offsetY, visibleLayerIndex, layerIndex, layerClass, display, branchName);
+
     let ImageX = 0;
     let ImageY = 0;
     layerImages.forEach((image, imageIndex) => {
@@ -1212,6 +1291,35 @@
     updateSVGSize(requiredWidth, requiredHeight);
     
     drawLegend(ImageX, ImageY + imageHeight + offsetY, boundaryValue, visibleLayerIndex, layerIndex, layerClass, display, branchName);
+  }
+
+  function capitalize(str){
+    if(str != 'relu' && str != 'bn'){
+      return (str.charAt(0).toUpperCase() + str.slice(1));
+    }
+    return str;
+  }
+  function writeLayerName(x, y, visibleLayerIndex, layerIndex, layerClass, display, branchName = 'none'){
+    if(layerClass == 'relu' && layerClass == 'bn'){
+      return;
+    }
+    const capitalizedName = capitalize(layerClass);
+    // const className = (branchName === 'none') ? `LayerName-${layerClass}`:  `LayerName-${branchName}-${layerClass}`;
+    const detailSVG = (branchName === 'none') ? d3.select('#module-structure') : d3.select('#module-structure').select(`g#${branchName}`)
+    
+    const layerName = detailSVG
+                      .append('text')
+                      .datum(capitalizedName)
+                      .attr('x', x)
+                      .attr('y', y)
+                      .attr('name', layerClass)
+                      .attr('class', 'LayerName')
+                      .attr('id', `LayerName-${visibleLayerIndex}`)
+                      .attr('text-anchor', 'middle')
+                      .attr('dominant-baseline', 'middle')
+                      .text(d => d)
+                      .attr('fill', 'black')
+                      .style('display', display);
   }
 
   function drawLegend(x, y, boundaryValue, visibleLayerIndex, layerIndex, layerClass, display, branchName = 'none'){
@@ -1272,11 +1380,8 @@
     // const strokeWidth = 1;
     const strokeWidth = 1;
     const className = (branchName === 'none') ? `IntermediateResult-${layerClass}`:  `IntermediateResult-${branchName}-${layerClass}`
-    let detailSVG = d3.select('#module-structure');
-    
-    if(branchName !== 'none'){
-      detailSVG = d3.select('#module-structure').select(`g#${branchName}`);
-    }    
+    const detailSVG = (branchName === 'none') ? d3.select('#module-structure') : d3.select('#module-structure').select(`g#${branchName}`)
+
     const imageCells = detailSVG.append('g')
     .attr('class', className)
     .attr('id', `IR-${visibleLayerIndex}-${layerIndex}-${imageIndex}`)
@@ -1360,7 +1465,10 @@
     });
 
     targetLegendId.forEach(legendId => {
+      console.log(legendId);
       const idTokens = legendId.split('-');
+      // idTokens[1]을 가져와서 select(`text.LayerName#LayerName-${idTokens[1]}`) 를 relu로 변경
+      // 끄는 경우에는 attr('name') 가져와서 해당 값으로 변경
       
       if(batchNormActive){
         const visibleLegend = detailSVG.selectAll('g').filter(function() {

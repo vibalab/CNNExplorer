@@ -136,7 +136,7 @@
       .attr('y', moduleHeight / 2)
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'middle')
-      .text((d) => d['type'])
+      .text((d) => capitalize(d['type']))
       .style('fill', 'black');
 
       modules.each(function(d, i) {
@@ -214,15 +214,75 @@
               .attr('fill-opacity', 1);
 
             branchLayers.append('text')
-              .transition()
-              .delay(500)
               .attr('x', layerWidth / 2)
               .attr('y', layerHeight / 2)
               .attr('text-anchor', 'middle')
               .attr('dominant-baseline', 'middle')
-              .text((d) => d['layer_type'])
               .style('fill', 'black')
-              .attr('fill-opacity', 1);
+              .style('opacity', 0)
+              .transition()
+              .delay(500)
+              .duration(500)
+              .style('opacity', 1)
+              .each(function(d) {
+                const textElement = d3.select(this);
+
+                if(['conv', 'maxpool', 'avgpool'].includes(d['layer_type'])){
+                const tspan1 = textElement.append("tspan")
+                  .attr("x", layerWidth / 2)
+                  .attr("dy", "-0.6em")
+                  .text(d.layer_type)
+                  .style('opacity', 0)
+                  .transition()
+                  .delay(500)
+                  .duration(500)
+                  .style('opacity', 1);
+                }
+
+                // 두 번째 줄: 추가 정보 (if applicable)
+                if (d['layer_type'] === 'conv') {
+                  const tspan2 = textElement.append("tspan")
+                    .attr("x", layerWidth / 2)
+                    .attr("dy", "1.2em")
+                    .text(`W: ${d['metadata']['kernel_size'].join('x')}`)
+                    .style('opacity', 0)
+                    .transition()
+                    .delay(500)
+                    .duration(500)
+                    .style('opacity', 1);
+                } else if (d['layer_type'] === 'maxpool') {
+                  const tspan2 = textElement.append("tspan")
+                    .attr("x", layerWidth / 2)
+                    .attr("dy", "1.2em")
+                    .text(`K: ${d['metadata']['kernel_size']} x ${d['metadata']['kernel_size']}`)
+                    .style('opacity', 0)
+                    .transition()
+                    .delay(500)
+                    .duration(500)
+                    .style('opacity', 1);
+                } else if (d['layer_type'] === 'avgpool') {
+                  const tspan2 = textElement.append("tspan")
+                    .attr("x", layerWidth / 2)
+                    .attr("dy", "1.2em")
+                    .text(`Out: ${d['metadata']['output_size'].join('x')}`)
+                    .style('opacity', 0)
+                    .transition()
+                    .delay(500)
+                    .duration(500)
+                    .style('opacity', 1);
+                }
+                else{
+                  const tspan1 = textElement.append("tspan")
+                  .attr("x", layerWidth / 2)
+                  .attr("dy", "0")
+                  .text(d.layer_type)
+                  .style('opacity', 0)
+                  .transition()
+                  .delay(500)
+                  .duration(500)
+                  .style('opacity', 1);
+                }
+              });
 
             //Remain layers
             const layers = group.select('g.layer-group').selectAll('g.layer')
@@ -321,15 +381,63 @@
             }
     
             layers.append('text')
-              .transition()
-              .delay(500)
               .attr('x', layerWidth / 2)
               .attr('y', moduleHeight * 0.8 / 2)
               .attr('text-anchor', 'middle')
               .attr('dominant-baseline', 'middle')
-              .text((d) => d['layer_type'])
               .style('fill', 'black')
-              .attr('fill-opacity', 1);
+              .style('opacity', 0)
+              .transition()
+              .delay(500)
+              .duration(500)
+              .style('opacity', 1)
+              .each(function(d) {
+                const textElement = d3.select(this);
+
+                // 첫 번째 줄: layer_type
+                const tspan1 = textElement.append("tspan")
+                  .attr("x", layerWidth / 2)
+                  .attr("dy", "0")
+                  .text(d.layer_type)
+                  .style('opacity', 0)
+                  .transition()
+                  .delay(500)
+                  .duration(500)
+                  .style('opacity', 1);
+
+                // 두 번째 줄: 추가 정보 (if applicable)
+                if (d['layer_type'] === 'conv') {
+                  const tspan2 = textElement.append("tspan")
+                    .attr("x", layerWidth / 2)
+                    .attr("dy", "1.2em")
+                    .text(`W: ${d['metadata']['kernel_size'].join('x')}`)
+                    .style('opacity', 0)
+                    .transition()
+                    .delay(500)
+                    .duration(500)
+                    .style('opacity', 1);
+                } else if (d['layer_type'] === 'maxpool') {
+                  const tspan2 = textElement.append("tspan")
+                    .attr("x", layerWidth / 2)
+                    .attr("dy", "1.2em")
+                    .text(`K: ${d['metadata']['kernel_size']} x ${d['metadata']['kernel_size']}`)
+                    .style('opacity', 0)
+                    .transition()
+                    .delay(500)
+                    .duration(500)
+                    .style('opacity', 1);
+                } else if (d['layer_type'] === 'avgpool') {
+                  const tspan2 = textElement.append("tspan")
+                    .attr("x", layerWidth / 2)
+                    .attr("dy", "1.2em")
+                    .text(`Out: ${d['metadata']['output_size'].join('x')}`)
+                    .style('opacity', 0)
+                    .transition()
+                    .delay(500)
+                    .duration(500)
+                    .style('opacity', 1);
+                }
+              });
             })
           .on('mouseout', function() {
             // 모든 rect를 원래 크기로 복원
@@ -348,7 +456,7 @@
               .attr('transform', (d, j) => `translate(${j * (moduleWidth + moduleXMargin)}, ${moduleYMargin})`);
 
             // 모든 text를 다시 표시
-            modules.select('text')
+            modules.selectAll('text')
               .transition()
               .duration(500)
               .style('display', 'inline')
@@ -356,7 +464,7 @@
         })
         //Click Effect => Call 'showDetailView'
         .on('click', () => {
-          openDetailView(d, i); 
+          openDetailView(d); 
         });
       });
 
@@ -370,7 +478,7 @@
   }
 
   // Open Detail View of Selected Module
-  async function openDetailView(selectedModuleInfo, selectedModuleIndex) {
+  async function openDetailView(selectedModuleInfo) {
     if(openModal){
       clearDetailView();
     }
@@ -378,7 +486,7 @@
     openModal = true;
     await tick();
 
-    drawModuleDetail(selectedModuleInfo, selectedModuleIndex);
+    drawModuleDetail(selectedModuleInfo);
   }
   // Close Detail View 
   function clearDetailView() {
@@ -392,7 +500,7 @@
   }
 
   // Call drawModule functions depending on the type of module
-  function drawModuleDetail(selectedModuleInfo, selectedModuleIndex){
+  function drawModuleDetail(selectedModuleInfo){
     if (selectedModuleInfo['type'] === 'conv'){
       drawConvModuleDetail(selectedModuleInfo['layers']);
       drawLayerConnections();
@@ -414,7 +522,6 @@
       setLayerEvents();
     }
     else if (selectedModuleInfo['type'] === 'inception'){
-      // drawInceptionModuleDetail(selectedModuleInfo);
       currentModule = selectedModuleInfo;
       selectedBranch = 'branch1';
       setLayerEvents();
@@ -522,6 +629,12 @@
           })
           addImageConnection(srcIR, dstIR, cursor - 1, cursor, dstImageIndex ,dstImageIndex);
         }
+        else if(layerClass === 'IntermediateResult-flatten'){
+          const srcIR = prevLayer.filter(function() {
+            return d3.select(this).attr('id').split('-')[3] === dstImageIndex;
+          })
+          drawFlattenConnections(srcIR, dstIR, cursor - 1, cursor, dstImageIndex ,dstImageIndex);
+        }
       });
     }
     pathData.forEach(path => {
@@ -536,6 +649,36 @@
           .attr('stroke-width', 1)
           .attr('id', path.id)
           .style('stroke-opacity', 0.5);
+    });
+  }
+  function drawFlattenConnections(srcImage, dstImage, srcLayerIndex, dstLayerIndex, srcImageIndex, dstImageIndex){
+    let flattenPathData = [];
+
+    const srcTranslate = srcImage.attr('transform').match(/translate\(([^)]+)\)/);
+    let srcCoordinates = srcTranslate[1].split(',').map(function(d) { return parseFloat(d); });
+    srcCoordinates[0] = srcCoordinates[0] + imageWidth;
+    srcCoordinates[1] = srcCoordinates[1] + imageHeight / 2;
+
+    const dstTranslate = dstImage.attr('transform').match(/translate\(([^)]+)\)/);
+    let dstCoordinates_top = dstTranslate[1].split(',').map(function(d) { return parseFloat(d); });
+    flattenPathData.push({ id:`edge-${srcLayerIndex}-${srcImageIndex}-${dstLayerIndex}-${dstImageIndex}`, source: srcCoordinates, target: dstCoordinates_top});
+
+    let dstCoordinates_bottom = [];
+    dstCoordinates_bottom[0] = dstCoordinates_top[0];
+    dstCoordinates_bottom[1] = dstCoordinates_top[1] + imageHeight;
+    flattenPathData.push({ id:`edge-${srcLayerIndex}-${srcImageIndex}-${dstLayerIndex}-${dstImageIndex}`, source: srcCoordinates, target: dstCoordinates_bottom});
+    
+    flattenPathData.forEach(path => {
+      d3.select('#module-structure').append('path')
+          .attr('d', link({
+            source: path.source,
+            target: path.target
+          }))
+          .attr('fill', 'none')
+          .attr('stroke', 'gray')
+          .attr('stroke-width', 1)
+          .attr('id', path.id)
+          .style('stroke-opacity', 0.3);
     });
   }
 
@@ -622,6 +765,7 @@
       const layerIndex = idTokens[1];
       const IRIndex = idTokens[3];
       const IRClass = d3.select(this).attr('class');
+      const rectWidth = IRClass.includes('flatten') ? 40 : imageHeight;
 
       paths = d3.select('#module-structure').selectAll('path').filter(function() {
         const edgeIndex = d3.select(this).attr('id').split('-');
@@ -639,7 +783,7 @@
 
       d3.select(this).append('rect')
         .attr('class', 'IR-wrapper')
-        .attr('width', imageWidth)
+        .attr('width', rectWidth)
         .attr('height', imageHeight)
         .attr('fill', 'none')
         .attr('stroke', strokeFill)
@@ -652,6 +796,8 @@
 
       d3.select(this).select('rect.IR-wrapper').remove();
     });
+
+
   }
 
   function setLinearLayerEvents(moduleLayer){
@@ -965,7 +1111,8 @@
         hiddenLayerCount = 0;
         x = moduleXPadding + (visibleLayerIndex) * (imageWidth + offsetX);
         y = moduleYPadding + (offsetY);
-        drawLinear(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['layer_type']);
+        // drawLinear(layer['output'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['layer_type']);
+        drawFlatten(layer['input'], visibleLayerIndex, hiddenLayerCount, x, y, 'inline', layer['layer_type']);
       }
     });
     moduleLayerDepth = visibleLayerIndex;
@@ -1159,7 +1306,7 @@
     drawInceptionModuleDetail(currentModule);
     updateInceptionBranch();
   }
-/* 
+
   function drawFlatten(layerImages, visibleLayerIndex, layerIndex, layerX, layerY, display = 'inline', layerClass){
     // Color Sacle of the layer images
     [layerMax, layerMin] = getLayerMaxMin3D(layerImages);
@@ -1174,25 +1321,26 @@
     let ImageX = 0;
     let ImageY = 0;
     const detailSVG = d3.select('#module-structure');
-    const linearLayerGroup = detailSVG.append('g')
-                              .attr('class', `IntermediateResult-${layerClass}`)
-                              .attr('id', `IR-${visibleLayerIndex}-${layerIndex}-0`)
-                              .attr('transform', `translate(${layerX}, ${layerY})`)
-                              .style('display', display);
-                              const layerHeight = imageHeight;
+    const layerHeight = imageHeight;
     const layerWidth = 40;
     const linearRectWidth = layerWidth;
+
+    writeLayerName(layerX + imageWidth / 2, layerY - offsetY, visibleLayerIndex, layerIndex, layerClass, display);
+
     layerImages.forEach((image, imageIndex) => {
-      let flatImage = undefined;
-      if(Array.isArray(image)){
-        flatImage = image.flat();
-      }
-      ImageX = layerX;
+      ImageX = layerX + (imageWidth - layerWidth) / 2;
       ImageY = layerY + (imageHeight + offsetY) * (imageIndex);
+    
+      const linearLayerGroup = detailSVG.append('g')
+                              .attr('class', `IntermediateResult-${layerClass}`)
+                              .attr('id', `IR-${visibleLayerIndex}-${layerIndex}-${imageIndex}`)
+                              .attr('transform', `translate(${ImageX}, ${ImageY})`)
+                              .style('display', display);
+
+      const flatImage = Array.isArray(image) ? image.flat() : image;
+
       flatImage.forEach((value, blockIndex) =>{
         const linearRectHeight = layerHeight / flatImage.length;
-
-
         linearLayerGroup.append('rect')
         .attr('x', 0)
         .attr('y', linearRectHeight * blockIndex)
@@ -1204,10 +1352,27 @@
         .style('stroke', 'black')
         .style('stroke-opacity', 0.5);
       });
+      if (imageIndex != layerImages.length - 1) {
+        const ellipsis = detailSVG.append('text')
+          .attr('x', ImageX + linearRectWidth / 2) 
+          .attr('y', ImageY + imageHeight + offsetY / 2 - 9) 
+          .attr('text-anchor', 'middle')
+          .attr('dominant-baseline', 'middle')
+          .style('fill', 'black');
 
-    });    
-    drawLegend(ImageX + (linearRectWidth) / 2, ImageY, boundaryValue, visibleLayerIndex, layerIndex, layerClass, display);
-  } */
+        const dots = ['.', '.', '.'];
+
+        ellipsis.selectAll("tspan")
+          .data(dots)
+          .enter()
+          .append("tspan")
+          .attr('x', ImageX + linearRectWidth / 2)
+          .attr('dy', (d, i) => i === 0 ? 0 : '6px')
+          .text(d => d);
+      }
+    });
+    drawLegend(layerX, ImageY + imageHeight + offsetY, boundaryValue, visibleLayerIndex, layerIndex, layerClass, display);
+  }
 
   function drawLinear(layer, visibleLayerIndex, layerIndex, x, y, display = 'inline', layerClass){
     if(layerClass != 'relu'){
@@ -1465,27 +1630,36 @@
     });
 
     targetLegendId.forEach(legendId => {
-      console.log(legendId);
       const idTokens = legendId.split('-');
-      // idTokens[1]을 가져와서 select(`text.LayerName#LayerName-${idTokens[1]}`) 를 relu로 변경
-      // 끄는 경우에는 attr('name') 가져와서 해당 값으로 변경
-      
+      const layerText = detailSVG.select(`text.LayerName#LayerName-${idTokens[1]}`);
+
       if(batchNormActive){
         const visibleLegend = detailSVG.selectAll('g').filter(function() {
           const gId = d3.select(this).attr('id');
           const tokens = gId.split('-');
 
           const isLegend =  tokens[0] == 'Legend';
-          const isBNLegend = tokens[1] == idTokens[1] && tokens[2] != '0';
-          return isLegend && isBNLegend;
+          const isReluLegend = tokens[1] == idTokens[1] && tokens[2] != idTokens[2];
+          return isLegend && isReluLegend;
         })
+        const currentLegend = d3.select(visibleLegend.nodes()[visibleLegend.size() - 1]);
         if(!reluActive) { 
-          detailSVG.selectAll(`g#${legendId}`).transition().style('display', 'inline'); 
-          visibleLegend.transition().style('display', 'none');
+          currentLegend.transition().style('display', 'none');
+          detailSVG.select(`g#${legendId}`).transition().style('display', 'inline'); 
+          layerText.text('relu');
         }
         else{
-          detailSVG.selectAll(`g#${legendId}`).transition().style('display', 'none'); 
-          visibleLegend.transition().style('display', 'inline');
+          if(currentLegend.attr('class').includes('bn')){
+            currentLegend.transition().style('display', 'none');
+            detailSVG.select(`g#${legendId}`).transition().style('display', 'inline');
+            layerText.text('bn');
+
+          }
+          else{
+            detailSVG.select(`g#${legendId}`).transition().style('display', 'none');
+            currentLegend.transition().style('display', 'inline');
+            layerText.text(capitalize(layerText.attr('name')));
+          }
         }
       }
       else{
@@ -1494,17 +1668,19 @@
           const tokens = gId.split('-');
 
           const isLegend =  tokens[0] == 'Legend';
-          const isNonBNLegend = tokens[1] == idTokens[1] && tokens[2] == '0';
-          return isLegend && isNonBNLegend;
-        
+          const isNonReluLegend = tokens[1] == idTokens[1] && tokens[2] == '0';
+          return isLegend && isNonReluLegend;
         })
         if(!reluActive) { 
-          detailSVG.selectAll(`g#${legendId}`).transition().style('display', 'inline'); 
           visibleLegend.transition().style('display', 'none');
+          detailSVG.select(`g#${legendId}`).transition().style('display', 'inline'); 
+          layerText.text('relu');
         }
         else{
-          detailSVG.selectAll(`g#${legendId}`).transition().style('display', 'none'); 
+          console.log(visibleLegend)
           visibleLegend.transition().style('display', 'inline');
+          detailSVG.select(`g#${legendId}`).transition().style('display', 'none'); 
+          layerText.text(capitalize(layerText.attr('name')));
         }
       }
     });
@@ -1539,44 +1715,56 @@
       detailSVG = d3.select('#module-structure');
       targetLegendId.forEach(legendId => {
         const idTokens = legendId.split('-');
+        const layerText = detailSVG.select(`text.LayerName#LayerName-${idTokens[1]}`);
 
         if(batchNormActive){
           const visibleLegend = detailSVG.selectAll('g').filter(function() {
-            const gClass = d3.select(this).attr('class');
             const gId = d3.select(this).attr('id');
             const tokens = gId.split('-');
 
-            const isLegend =  tokens[0] == 'Legend' && gClass.includes(selectedBranch);
-            const isBNLegend = tokens[1] == idTokens[1] && tokens[2] != '0';
-            return isLegend && isBNLegend;
+            const isLegend =  tokens[0] == 'Legend';
+            const isReluLegend = tokens[1] == idTokens[1] && tokens[2] != idTokens[2];
+            return isLegend && isReluLegend;
           })
+          const currentLegend = d3.select(visibleLegend.nodes()[visibleLegend.size() - 1]);
           if(!reluActive) { 
-            detailSVG.selectAll(`g#${legendId}${reluClassSelector}`).transition().style('display', 'inline'); 
-            visibleLegend.transition().style('display', 'none');
+            currentLegend.transition().style('display', 'none');
+            detailSVG.select(`g#${legendId}`).transition().style('display', 'inline'); 
+            layerText.text('relu');
           }
           else{
-            detailSVG.selectAll(`g#${legendId}${reluClassSelector}`).transition().style('display', 'none'); 
-            visibleLegend.transition().style('display', 'inline');
+            if(currentLegend.attr('class').includes('bn')){
+              currentLegend.transition().style('display', 'none');
+              detailSVG.select(`g#${legendId}`).transition().style('display', 'inline');
+              layerText.text('bn');
+
+            }
+            else{
+              detailSVG.select(`g#${legendId}`).transition().style('display', 'none');
+              currentLegend.transition().style('display', 'inline');
+              layerText.text(capitalize(layerText.attr('name')));
+            }
           }
         }
         else{
           const visibleLegend = detailSVG.selectAll('g').filter(function() {
-            const gClass = d3.select(this).attr('class');
             const gId = d3.select(this).attr('id');
             const tokens = gId.split('-');
 
-            const isLegend =  tokens[0] == 'Legend' && gClass.includes(selectedBranch);
-            const isNonBNLegend = tokens[1] == idTokens[1] && tokens[2] == '0';
-            return isLegend && isNonBNLegend;
-          
+            const isLegend =  tokens[0] == 'Legend';
+            const isNonReluLegend = tokens[1] == idTokens[1] && tokens[2] == '0';
+            return isLegend && isNonReluLegend;
           })
           if(!reluActive) { 
-            detailSVG.selectAll(`g#${legendId}${reluClassSelector}`).transition().style('display', 'inline'); 
             visibleLegend.transition().style('display', 'none');
+            detailSVG.select(`g#${legendId}`).transition().style('display', 'inline'); 
+            layerText.text('relu');
           }
           else{
-            detailSVG.selectAll(`g#${legendId}${reluClassSelector}`).transition().style('display', 'none'); 
+            console.log(visibleLegend)
             visibleLegend.transition().style('display', 'inline');
+            detailSVG.select(`g#${legendId}`).transition().style('display', 'none'); 
+            layerText.text(capitalize(layerText.attr('name')));
           }
         }
       });
@@ -1609,23 +1797,35 @@
 
     targetLegendId.forEach(legendId => {
       const idTokens = legendId.split('-');
-      
+      const layerText = detailSVG.select(`text.LayerName#LayerName-${idTokens[1]}`);
+
       if(reluActive){
         const visibleLegend = detailSVG.selectAll('g').filter(function() {
           const gId = d3.select(this).attr('id');
           const tokens = gId.split('-');
 
           const isLegend =  tokens[0] == 'Legend';
-          const isReluLegend = tokens[1] == idTokens[1] && tokens[2] != '0';
+          const isReluLegend = tokens[1] == idTokens[1] && tokens[2] != idTokens[2];
           return isLegend && isReluLegend;
         })
+        const currentLegend = d3.select(visibleLegend.nodes()[visibleLegend.size() - 1]);
         if(!batchNormActive) { 
-          detailSVG.selectAll(`g#${legendId}`).transition().style('display', 'inline'); 
-          visibleLegend.transition().style('display', 'none');
+          currentLegend.transition().style('display', 'none');
+          detailSVG.select(`g#${legendId}`).transition().style('display', 'inline'); 
+          layerText.text('bn');
         }
         else{
-          detailSVG.selectAll(`g#${legendId}`).transition().style('display', 'none'); 
-          visibleLegend.transition().style('display', 'inline');
+          if(currentLegend.attr('class').includes('relu')){
+            currentLegend.transition().style('display', 'none');
+            detailSVG.select(`g#${legendId}`).transition().style('display', 'inline');
+            layerText.text('relu');
+
+          }
+          else{
+            detailSVG.select(`g#${legendId}`).transition().style('display', 'none');
+            currentLegend.transition().style('display', 'inline');
+            layerText.text(capitalize(layerText.attr('name')));
+          }
         }
       }
       else{
@@ -1636,15 +1836,16 @@
           const isLegend =  tokens[0] == 'Legend';
           const isNonReluLegend = tokens[1] == idTokens[1] && tokens[2] == '0';
           return isLegend && isNonReluLegend;
-        
         })
         if(!batchNormActive) { 
-          detailSVG.selectAll(`g#${legendId}`).transition().style('display', 'inline'); 
           visibleLegend.transition().style('display', 'none');
+          detailSVG.select(`g#${legendId}`).transition().style('display', 'inline'); 
+          layerText.text('bn');
         }
         else{
-          detailSVG.selectAll(`g#${legendId}`).transition().style('display', 'none'); 
+          detailSVG.select(`g#${legendId}`).transition().style('display', 'none'); 
           visibleLegend.transition().style('display', 'inline');
+          layerText.text(capitalize(layerText.attr('name')));
         }
       }
     });
@@ -1679,46 +1880,58 @@
 
       bnClassSelector = `.Legend-${selectedBranch}-bn`;
       detailSVG = d3.select('#module-structure');
+      
       targetLegendId.forEach(legendId => {
         const idTokens = legendId.split('-');
+        const layerText = detailSVG.select(`text.LayerName#LayerName-${idTokens[1]}`);
 
         if(reluActive){
           const visibleLegend = detailSVG.selectAll('g').filter(function() {
-            const gClass = d3.select(this).attr('class');
             const gId = d3.select(this).attr('id');
             const tokens = gId.split('-');
 
-            const isLegend =  tokens[0] == 'Legend' && gClass.includes(selectedBranch);
-            const isReluLegend = tokens[1] == idTokens[1] && tokens[2] != '0';
+            const isLegend =  tokens[0] == 'Legend';
+            const isReluLegend = tokens[1] == idTokens[1] && tokens[2] != idTokens[2];
             return isLegend && isReluLegend;
           })
+          const currentLegend = d3.select(visibleLegend.nodes()[visibleLegend.size() - 1]);
           if(!batchNormActive) { 
-            detailSVG.selectAll(`g#${legendId}${bnClassSelector}`).transition().style('display', 'inline'); 
-            visibleLegend.transition().style('display', 'none');
+            currentLegend.transition().style('display', 'none');
+            detailSVG.select(`g#${legendId}`).transition().style('display', 'inline'); 
+            layerText.text('bn');
           }
           else{
-            detailSVG.selectAll(`g#${legendId}${bnClassSelector}`).transition().style('display', 'none'); 
-            visibleLegend.transition().style('display', 'inline');
+            if(currentLegend.attr('class').includes('relu')){
+              currentLegend.transition().style('display', 'none');
+              detailSVG.select(`g#${legendId}`).transition().style('display', 'inline');
+              layerText.text('relu');
+
+            }
+            else{
+              detailSVG.select(`g#${legendId}`).transition().style('display', 'none');
+              currentLegend.transition().style('display', 'inline');
+              layerText.text(capitalize(layerText.attr('name')));
+            }
           }
         }
         else{
           const visibleLegend = detailSVG.selectAll('g').filter(function() {
-            const gClass = d3.select(this).attr('class');
             const gId = d3.select(this).attr('id');
             const tokens = gId.split('-');
 
-            const isLegend =  tokens[0] == 'Legend' && gClass.includes(selectedBranch);
+            const isLegend =  tokens[0] == 'Legend';
             const isNonReluLegend = tokens[1] == idTokens[1] && tokens[2] == '0';
             return isLegend && isNonReluLegend;
-          
           })
           if(!batchNormActive) { 
-            detailSVG.selectAll(`g#${legendId}${bnClassSelector}`).transition().style('display', 'inline'); 
             visibleLegend.transition().style('display', 'none');
+            detailSVG.select(`g#${legendId}`).transition().style('display', 'inline'); 
+            layerText.text('bn');
           }
           else{
-            detailSVG.selectAll(`g#${legendId}${bnClassSelector}`).transition().style('display', 'none'); 
+            detailSVG.select(`g#${legendId}`).transition().style('display', 'none'); 
             visibleLegend.transition().style('display', 'inline');
+            layerText.text(capitalize(layerText.attr('name')));
           }
         }
       });

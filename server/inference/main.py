@@ -111,26 +111,28 @@ def get_layer_info(node):
             layer_info[k] = node.__getattribute__(k)
     return layer_info
 
-def get_transformed(data_dir, log_dir, processor, is_transformers):
+def get_transformed(data_dir, processor, is_transformers):
     img = Image.open(data_dir)
     if is_transformers:
         data = processor(img, return_tensors="pt")
     else:
         data = processor(img)
-    img.save(os.path.join(log_dir, 'image.png'))
-    img.getchannel("R").save(os.path.join(log_dir, f'image_r.png'))
-    img.getchannel("G").save(os.path.join(log_dir, f'image_g.png'))
-    img.getchannel("B").save(os.path.join(log_dir, f'image_b.png'))
-    return data
+    #img.save(os.path.join(log_dir, 'image.png'))
+    #img.getchannel("R").save(os.path.join(log_dir, f'image_r.png'))
+    #img.getchannel("G").save(os.path.join(log_dir, f'image_g.png'))
+    #img.getchannel("B").save(os.path.join(log_dir, f'image_b.png'))
+    return data, img
 
-def main(log_dir, data_dir, model_name):
+def inference(log_dir, data_dir, model_name, save_to_file=False):
     model, processor, is_transformers = load_model(model_name)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     os.makedirs(log_dir, exist_ok=True)
-    inputs = get_transformed(data_dir, log_dir, processor, is_transformers)
-    
+    inputs, img = get_transformed(data_dir, processor, is_transformers)
+    if save_to_file:
+        img.save(os.path.join(log_dir, 'image.png'))
+
     global global_graph 
     global_graph = trace_model(model, is_transformers)
     global_graph.print_tabular()
@@ -308,17 +310,20 @@ def main(log_dir, data_dir, model_name):
             if 'output_index' in layer: print(layer['output_index'][:5])
         print("--")
 
-    with open(os.path.join(log_dir, model_name.replace("/","__")+'_info.json'), "w") as f:
-        json.dump(info, f)
-    print()
+    if save_to_file:
+        with open(os.path.join(log_dir, model_name.replace("/","__")+'_info.json'), "w") as f:
+            json.dump(info, f)
+    else:
+        return info, img
 
 def get_imagenet_data():
     images = []
-    path = "./imagenet-sample-images"
+    path = "../imagenet-sample-images"
     for fname in sorted(os.listdir(path)):
         if fname.endswith(".JPEG"):
             images.append(os.path.join(path, fname))
     return images
+
 
 if __name__ == "__main__":
     from tqdm import tqdm
@@ -344,10 +349,6 @@ if __name__ == "__main__":
     # models that doesn't work
     # timm/vgg 
 
-    work = ["timm/inception_v3.tf_in1k"]
-    work2 = ["timm/vgg11.tv_in1k"]
-    work3 = ["timm/vgg11_bn.tv_in1k"]
-
     test = ["alexnet", "vgg16"]
     test_v = ["vgg16", "timm/vgg11.tv_in1k"]
     test_r = ["resnet18", "microsoft/resnet-18", "timm/resnet18.a1_in1k"]
@@ -363,5 +364,6 @@ if __name__ == "__main__":
     for model in ["microsoft/resnet-18"]:
         for index, data in tqdm(enumerate(imagenet_data)):
             #label = IMAGENET_CLASSES[index]
-            main(f"./svelte-app/public/output/{index}/", data, model)
-
+            info, img = inference(f"../output/{index}/", data, model, save_to_file=False)
+            print(len(info), img)
+        print()

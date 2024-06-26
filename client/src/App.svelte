@@ -80,6 +80,7 @@
   const moduleWidth = 100;
   const moduleHeight = 400;
 
+  let isExpanded = false;
   let isHuggingFaceModel = false;
   let isUserInputImage = false;
   let openModal = false;
@@ -108,12 +109,16 @@
     }
 
     if(isUserInputImage){
-      formData.append('image_path', selectedClass);
-    }
-    else{
       formData.append('image_path', userImageFile.name);
     }
-
+    else{
+      formData.append('image_path', selectedClass);
+    }
+    console.log(isHuggingFaceModel)
+    console.log(selectedModel)
+    console.log(isUserInputImage)
+    console.log(selectedClass)
+    console.log(formData)
     try {
       const response = await fetch(`${serverIP}/infer`, {
         method: 'POST',
@@ -129,6 +134,7 @@
         console.log('Model loaded successfully');
         drawModuleView()
       } else {
+        console.log(response)
         alert('Model load failed');
       }
     } catch (error) {
@@ -1988,7 +1994,6 @@
   async function uploadFile(file) {
     const formData = new FormData();
     formData.append('image', file);
-
     try {
       const response = await fetch(`${serverIP}/upload_image`, {
         method: 'POST',
@@ -2003,6 +2008,24 @@
     } catch (error) {
       console.error('Error uploading file:', error);
       alert('File upload failed');
+    }
+  }
+
+  function toggleExpand() {
+    isExpanded = !isExpanded;
+    const modelContainer = document.getElementById('model-container');
+    const moduleContainer = document.getElementById('module-container');
+
+    const toggleButton = document.getElementById('toggle-button');
+
+    if (isExpanded) {
+      modelContainer.style.height = 'calc(20vh - 30px)';
+      moduleContainer.style.height = 'calc(80vh - 30px)';
+      toggleButton.style.top = 'calc(20vh - 40px)';
+    } else {
+      modelContainer.style.height = 'calc(50vh - 30px)';
+      moduleContainer.style.height = 'calc(50vh - 30px)';
+      toggleButton.style.top = 'calc(50vh - 40px)';
     }
   }
 </script>
@@ -2025,7 +2048,30 @@
   #module-svg:active {
     cursor: grabbing;
   }
+  .toggle-button {
+    position: absolute;
+    width: 250px;
+    height: 20px;
+    top: calc(50% - 10px);
+    left: calc(50% - 75px);
+    background-color: #e0e0e0;
+    color: black;
+    text-align: center;
+    line-height: 20px;
+    cursor: pointer;
+    z-index: 1;
+    border: 1px solid rgba(200, 200, 200, 255);
+    border-radius: 5px;
+    transition: top 0.5s ease, background-color 0.5s ease;
+  }
 
+  .toggle-button:hover {
+    background-color: #d0d0d0;
+  }
+
+  #model-container, #module-container {
+    transition: height 0.5s ease;
+  }
   
 </style>
 
@@ -2137,21 +2183,18 @@
         </Col>
       </Row>
     </Col>
-    <Col class="p-0" style="flex-grow: 1; height: calc(100vh - 60px);">
-      <Row class="m-0" style="width: 100%; height: calc(50vh - 30px); border: 1px solid rgba(225,225,225,255);">
-      <div class="p-0" id="model-container" style="width: 100%; height: 100%; overflow: auto;">
+    <Col class="p-0" style="flex-grow: 1; height: calc(100vh - 60px); position: relative;">
+      <div id="model-container" style="width: 100%; height: calc(50vh - 30px); border: 1px solid rgba(225,225,225,255); overflow: auto;">
         <svg id="model-svg" style="width: 100%; height: 100%; display: block; min-width: 100%; min-height: 100%;">
           <g id="model-structure"></g>
         </svg>
       </div>
-      </Row>
-      <Row class="m-0" style="width: 100%; height: calc(50vh - 30px); border: 1px solid rgba(225,225,225,255);">
-          <div id="module-container">
-            <svg id="module-svg" style="width: 100%; height: 100%; display: block; min-width: 100%; min-height: 100%;">
-              <g id="module-structure"></g>
-            </svg>
-          </div>
-      </Row>
+      <div id="toggle-button" class="toggle-button" on:click={toggleExpand}>{isExpanded ? 'Collapse Layer View' : 'Expand Layer View'}</div>
+      <div id="module-container" style="width: 100%; height: calc(50vh - 30px); border: 1px solid rgba(225,225,225,255); overflow: auto;">
+        <svg id="module-svg" style="width: 100%; height: 100%; display: block; min-width: 100%; min-height: 100%;">
+          <g id="module-structure"></g>
+        </svg>
+      </div>
     </Col>
   </Row>
 </Container>

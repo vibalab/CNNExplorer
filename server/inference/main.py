@@ -10,8 +10,11 @@ import operator
 import numpy as np
 from PIL import Image
 
-from model import *
-from graph import *
+from inference.model import *
+from inference.graph import *
+
+current_directory = os.path.dirname(__file__)
+file_path = os.path.join(current_directory, 'relative/path/to/your/file')
 
 def get_layer_from_str(model, string):
     keys = string.split('.')
@@ -318,7 +321,7 @@ def inference(log_dir, data_dir, model_name, save_to_file=False):
 
 def get_imagenet_data():
     images = []
-    path = "../imagenet-sample-images"
+    path = "./imagenet-sample-images"
     for fname in sorted(os.listdir(path)):
         if fname.endswith(".JPEG"):
             images.append(os.path.join(path, fname))
@@ -327,7 +330,7 @@ def get_imagenet_data():
 
 if __name__ == "__main__":
     from tqdm import tqdm
-    imagenet_data = get_imagenet_data()[:1]
+    imagenet_data = get_imagenet_data()[:1] # [경로0, 경로1]
 
     # torchvision
     # model must be able to be traced

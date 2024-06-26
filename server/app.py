@@ -8,12 +8,17 @@ import timm
 import torch
 from PIL import Image
 from torchvision import transforms
-
+from inference.main import inference, get_imagenet_data
 
 app = Flask(__name__)
 CORS(app)
 
-models = {}
+models = {
+            'alexnet':'alexnet',
+            'vgg16':'vgg16',
+            'googlenet':'googlenet',
+            'resnet18':'resnet18'
+          }
 model_locks = {}
 UPLOAD_FOLDER = 'uploaded_images'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -22,7 +27,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 num_gpus = torch.cuda.device_count()
 inference_queue = Queue()
 
-def load_model(model_name):
+""" def load_model(model_name):
     try:
         if model_name.startswith('timm/'):
             model = timm.create_model(model_name.replace('timm/', ''), pretrained=True)
@@ -54,7 +59,7 @@ def load_model_endpoint():
     thread = threading.Thread(target=load_model_thread)
     thread.start()
 
-    return jsonify({"message": f"Model '{model_name}' is being loaded."})
+    return jsonify({"message": f"Model '{model_name}' is being loaded."}) """
 
 @app.route('/upload_image', methods=['POST'])
 def upload_image():
@@ -72,7 +77,7 @@ def upload_image():
     return jsonify({"message": f"Image '{image.filename}' uploaded successfully", "path": image_path})
 
 
-def preprocess_image(image_path, model_name):
+""" def preprocess_image(image_path, model_name):
     input_image = Image.open(image_path).convert('RGB')
     transform = transforms.Compose([
         transforms.Resize(256),
@@ -80,19 +85,9 @@ def preprocess_image(image_path, model_name):
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
-    return transform(input_image).unsqueeze(0)
+    return transform(input_image).unsqueeze(0) """
 
-def inference_worker():
-    while True:
-        model_name, image_path, result_queue = inference_queue.get()
-        try:
-            result = run_inference(model_name, image_path)
-            result_queue.put(result)
-        except Exception as e:
-            result_queue.put(f"Failed to run inference: {str(e)}")
-        inference_queue.task_done()
-
-def run_inference(model_name, image_path):
+""" def run_inference(model_name, image_path):
     if model_name not in models or not models[model_name]:
         raise ValueError("Model not properly loaded")
 
@@ -111,31 +106,59 @@ def run_inference(model_name, image_path):
     model.to('cpu')
     torch.cuda.empty_cache()
 
-    return predicted.item()
+    return predicted.item() """
+
+def inference_worker():
+    while True:
+        model_name, image_path, index, result_queue = inference_queue.get()
+        
+        try:
+            # result = run_inference(model_name, image_path)
+            model_data, image_data = inference(f'./output/{index}', image_path, model_name, save_to_file=False) 
+            result = dict()
+            result['jsonData'] = model_data
+            result['imageUrl'] = image_data
+            result_queue.put(result)
+        except Exception as e:
+            result_queue.put(f"Failed to run inference: {str(e)}")
+        inference_queue.task_done()
 
 @app.route('/infer', methods=['POST'])
 def infer():
-    
-    # 입력값 2개 받음
-    #image,  = main('image_path','model_name')
-    
-    model_name = request.args.get('model_name')
-    image_path = request.args.get('image_path')
+    imagenet_data = get_imagenet_data()
+    model_name = request.form.get('model_name')
+    image_path = request.form.get('image_path')
+    print(model_name)
+    print(image_path)
+    path = ''
+    index = 0    
+    if image_path.isdigit() and (int(image_path) >= 0 and int(image_path) < 1000):
+        index = int(image_path)
+        path = imagenet_data[index]
+    else:
+        index = 1000
+        path = './uploaded_images/' + image_path
 
     if not model_name:
+        print('1')
         return jsonify({"error": "model_name parameter is required"}), 400
     if not image_path:
+        print('2')       
         return jsonify({"error": "image_path parameter is required"}), 400
     if model_name not in models:
+        print('3')
         return jsonify({"error": f"Model '{model_name}' is not loaded"}), 400
-    if not os.path.exists(image_path):
+    if not os.path.exists(path):
+        print('4')
         return jsonify({"error": f"Image '{image_path}' does not exist"}), 400
-
+    print('queue')
     result_queue = Queue()
-    inference_queue.put((model_name, image_path, result_queue))
+    inference_queue.put((model_name, path, index, result_queue))
 
+    print('result')
     result = result_queue.get()  # Wait for the inference result
-
+  
+    print(result)
     return jsonify({"message": "Inference completed", "result": result})
 
 # Start inference worker threads

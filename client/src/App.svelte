@@ -114,11 +114,7 @@
     else{
       formData.append('image_path', selectedClass);
     }
-    console.log(isHuggingFaceModel)
-    console.log(selectedModel)
-    console.log(isUserInputImage)
-    console.log(selectedClass)
-    console.log(formData)
+
     try {
       const response = await fetch(`${serverIP}/infer`, {
         method: 'POST',
@@ -127,14 +123,43 @@
 
       if (response.ok) {
         const data = await response.json();
-        modelData = data.jsonData();
-        const imageBlob = await fetch(data.imageUrl).then(res => res.blob());
-        inputImageUrl = URL.createObjectURL(imageBlob);
+        modelData = data['result']['jsonData'];
 
+        const imageData = data['result']['imageUrl'];
+        const N = imageData.length;
+        const M = imageData[0].length;
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = M;
+        canvas.height = N;
+
+        // Create an ImageData object
+        const imageDataObj = ctx.createImageData(M, N);
+        const buffer = imageDataObj.data;
+
+        for (let i = 0; i < N; i++) {
+          for (let j = 0; j < M; j++) {
+            const pixel = imageData[i][j];
+            const index = (i * M + j) * 4;
+            buffer[index] = pixel[0];
+            buffer[index + 1] = pixel[1];
+            buffer[index + 2] = pixel[2];
+            buffer[index + 3] = 255; // Alpha channel set to opaque
+          }
+        }
+
+        // Put the ImageData object onto the canvas
+        ctx.putImageData(imageDataObj, 0, 0);
+
+        // Convert the canvas to a Blob
+        canvas.toBlob((blob) => {
+          inputImageUrl = URL.createObjectURL(blob);
+        });
+      
         console.log('Model loaded successfully');
         drawModuleView()
       } else {
-        console.log(response)
         alert('Model load failed');
       }
     } catch (error) {
@@ -146,12 +171,6 @@
   
   function drawModuleView(){
     modelSVG.select('g#model-structure').selectAll('*').remove();
-    // const response = await fetch(`/output/${selectedClass}/${selectedModel}_info.json`);
-    // modelData = await response.json();
-    // inputImageUrl = `/output/${selectedClass}/image.png`;
-    // console.log("Loaded JSON data:", modelData);
-
-    // JSON 객체의 모든 키를 출력
     console.log("Keys in JSON:", Object.keys(modelData));
 
     const moduleGroup = modelSVG.select('g#model-structure').append('g').attr('class', 'module-group');
@@ -2019,9 +2038,9 @@
     const toggleButton = document.getElementById('toggle-button');
 
     if (isExpanded) {
-      modelContainer.style.height = 'calc(20vh - 30px)';
-      moduleContainer.style.height = 'calc(80vh - 30px)';
-      toggleButton.style.top = 'calc(20vh - 40px)';
+      modelContainer.style.height = 'calc(30px)';
+      moduleContainer.style.height = 'calc(100vh - 30px)';
+      toggleButton.style.top = 'calc(20px)';
     } else {
       modelContainer.style.height = 'calc(50vh - 30px)';
       moduleContainer.style.height = 'calc(50vh - 30px)';

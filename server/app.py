@@ -9,6 +9,7 @@ import torch
 from PIL import Image
 from torchvision import transforms
 from inference.main import inference, get_imagenet_data
+import numpy as np
 
 app = Flask(__name__)
 CORS(app)
@@ -117,7 +118,7 @@ def inference_worker():
             model_data, image_data = inference(f'./output/{index}', image_path, model_name, save_to_file=False) 
             result = dict()
             result['jsonData'] = model_data
-            result['imageUrl'] = image_data
+            result['imageUrl'] = np.array(image_data).tolist()
             result_queue.put(result)
         except Exception as e:
             result_queue.put(f"Failed to run inference: {str(e)}")
@@ -128,8 +129,7 @@ def infer():
     imagenet_data = get_imagenet_data()
     model_name = request.form.get('model_name')
     image_path = request.form.get('image_path')
-    print(model_name)
-    print(image_path)
+
     path = ''
     index = 0    
     if image_path.isdigit() and (int(image_path) >= 0 and int(image_path) < 1000):
@@ -140,25 +140,19 @@ def infer():
         path = './uploaded_images/' + image_path
 
     if not model_name:
-        print('1')
         return jsonify({"error": "model_name parameter is required"}), 400
     if not image_path:
-        print('2')       
         return jsonify({"error": "image_path parameter is required"}), 400
-    if model_name not in models:
-        print('3')
-        return jsonify({"error": f"Model '{model_name}' is not loaded"}), 400
+    # if model_name not in models:
+    #     return jsonify({"error": f"Model '{model_name}' is not loaded"}), 400
     if not os.path.exists(path):
-        print('4')
-        return jsonify({"error": f"Image '{image_path}' does not exist"}), 400
-    print('queue')
+        return jsonify({"error": f"Image '{path}' does not exist"}), 400
+
     result_queue = Queue()
     inference_queue.put((model_name, path, index, result_queue))
 
-    print('result')
     result = result_queue.get()  # Wait for the inference result
   
-    print(result)
     return jsonify({"message": "Inference completed", "result": result})
 
 # Start inference worker threads

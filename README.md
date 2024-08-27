@@ -31,7 +31,9 @@ This repository provides tools to load and inference Convolutional Neural Networ
 3. Download imagenet sample images
 
    ```bash
+   cd server
    git clone https://github.com/EliSchwartz/imagenet-sample-images
+   cd ..
    ```
 
 4. Install nvm and NodeJS following [link](https://github.com/nvm-sh/nvm?tab=readme-ov-file#installing-and-updating)
@@ -45,7 +47,7 @@ This repository provides tools to load and inference Convolutional Neural Networ
 5. Install Svelte and JavaScript dependencies:
 
    ```bash
-   cd svelte-app
+   cd client
    npm install
    cd ..
    ```
@@ -57,11 +59,16 @@ This repository provides tools to load and inference Convolutional Neural Networ
 
 1. Download pre-trained CNN model weights.
 2. Use the provided Python scripts to perform inference on your desired input data.
+3. Run flask server app
 
 Example:
 
 ```bash
-python inference/main.py
+cd server
+mkdir weights
+python get_pretrained.py # resnet18, 0
+python inference/main.py # fix main function to specifiy imagenet samples and models
+python app.py
 ```
 
 ### Intermediate Tensor Visualization
@@ -69,7 +76,7 @@ python inference/main.py
 1. Start the Svelte development server:
 
    ```bash
-   cd svelte-app
+   cd client
    npm run dev
    ```
 

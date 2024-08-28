@@ -40,16 +40,17 @@ def save_model_weights(model, model_name):
     torch.save(model.state_dict(), f"weights/{model_name}_weights.pth")
 
 # Get user input
-model_name = input("Enter the model name: ")
-weight_version = int(input("Enter the weight version number (starting from 0): "))
+# model_name = input("Enter the model name: ")
+# weight_version = int(input("Enter the weight version number (starting from 0): "))
 
-# Get the model
-model = get_model(model_name, weight_version)
+# get all models
+models = ["alexnet", "vgg16", "googlenet", "resnet18"]
 
-# Print model list in torchvision.model
-for name in dir(torchvision.models):
-    print(name)
-
-if model:
-    # Save the model weights
-    save_model_weights(model, model_name+'_'+str(weight_version))
+for model_name in models:
+    weight_version = 0
+    # Get the model
+    model = get_model(model_name, weight_version)
+    if model:
+        print(model)
+        # Save the model weights
+        save_model_weights(model, model_name+'_'+str(weight_version))

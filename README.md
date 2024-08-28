@@ -19,13 +19,14 @@ This repository provides tools to load and inference Convolutional Neural Networ
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/Negota/vis4cnn.git
+   git clone https://github.com/vibalab/CNNExplorer
    ```
 
 2. Install conda environment and python dependencies:
 
    ```bash
-   conda create -n vis4cnn python==3.11.5
+   conda create -n cnnexplorer python==3.11.5
+   conda activate cnnexplorer
    pip install -r requirements.txt
    ```
 3. Download imagenet sample images
@@ -66,8 +67,7 @@ Example:
 ```bash
 cd server
 mkdir weights
-python get_pretrained.py # resnet18, 0
-python inference/main.py # fix main function to specifiy imagenet samples and models
+python get_pretrained.py # get pretrained torchvision models
 python app.py
 ```
 

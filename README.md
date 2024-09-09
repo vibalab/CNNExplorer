@@ -4,7 +4,7 @@ This repository provides tools to load and inference Convolutional Neural Networ
 
 ## System Demo
 
-[![Watch the video](https://youtu.be/XGk2fEmS9nk/maxresdefault.jpg)]([[https://youtu.be/VIDEO_ID](https://youtu.be/XGk2fEmS9nk)](https://youtu.be/XGk2fEmS9nk))
+[![Watch the video](https://img.youtube.com/vi/XGk2fEmS9nk/maxresdefault.jpg)](https://www.youtube.com/watch?v=XGk2fEmS9nk)
 
 
 ## Features

@@ -2,6 +2,11 @@
 
 This repository provides tools to load and inference Convolutional Neural Network (CNN) models using PyTorch and Python, as well as visualize the intermediate tensors using Svelte and JavaScript.
 
+## System Demo
+
+[![Watch the video](https://youtu.be/XGk2fEmS9nk/maxresdefault.jpg)]([[https://youtu.be/VIDEO_ID](https://youtu.be/XGk2fEmS9nk)](https://youtu.be/XGk2fEmS9nk))
+
+
 ## Features
 
 1. **CNN Model Inference**: Load pre-trained CNN models and perform inference on input data.
